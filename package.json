@@ -1,0 +1,19 @@
+{
+	"name": "typescript-github",
+	"version": "0.1.0",
+	"description": "Somewhat regularly-built snapshots of https://github.com/Microsoft/TypeScript",
+	"keywords": ["typescript"],
+	"homepage": "https://github.com/Arnavion/typescript-github",
+	"licenses": [{
+		"type": "Apache-2.0",
+		"url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+	}],
+	"maintainers": [{
+		"name": "Arnav Singh",
+		"email": "arnavion@gmail.com"
+	}],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Arnavion/typescript-github"
+	}
+}
