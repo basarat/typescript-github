@@ -5886,10 +5886,9 @@ var ts;
             }
             function calculateIndent(pos, end) {
                 var currentLineIndent = 0;
-                while (pos < end && ts.isWhiteSpace(currentSourceFile.text.charCodeAt(pos))) {
-                    pos++;
+                for (; pos < end && ts.isWhiteSpace(currentSourceFile.text.charCodeAt(pos)); pos++) {
                     if (currentSourceFile.text.charCodeAt(pos) === 9 /* tab */) {
-                        currentLineIndent += getIndentSize();
+                        currentLineIndent += getIndentSize() - (currentLineIndent % getIndentSize());
                     }
                     else {
                         currentLineIndent++;
