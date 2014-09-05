@@ -267,6 +267,7 @@ var ts;
         Import_name_cannot_be_0: { code: 2438, category: 1 /* Error */, key: "Import name cannot be '{0}'" },
         Import_declaration_in_an_ambient_external_module_declaration_cannot_reference_external_module_through_relative_external_module_name: { code: 2439, category: 1 /* Error */, key: "Import declaration in an ambient external module declaration cannot reference external module through relative external module name." },
         Import_declaration_conflicts_with_local_declaration_of_0: { code: 2440, category: 1 /* Error */, key: "Import declaration conflicts with local declaration of '{0}'" },
+        Duplicate_identifier_0_Compiler_reserves_name_1_in_top_level_scope_of_an_external_module: { code: 2441, category: 1 /* Error */, key: "Duplicate identifier '{0}'. Compiler reserves name '{1}' in top level scope of an external module." },
         Import_declaration_0_is_using_private_name_1: { code: 4000, category: 1 /* Error */, key: "Import declaration '{0}' is using private name '{1}'." },
         Type_parameter_0_of_exported_class_has_or_is_using_name_1_from_private_module_2: { code: 4001, category: 1 /* Error */, key: "Type parameter '{0}' of exported class has or is using name '{1}' from private module '{2}'." },
         Type_parameter_0_of_exported_class_has_or_is_using_private_name_1: { code: 4002, category: 1 /* Error */, key: "Type parameter '{0}' of exported class has or is using private name '{1}'." },
@@ -566,7 +567,8 @@ var ts;
         var pos = 0;
         var lineStart = 0;
         while (pos < text.length) {
-            switch (text.charCodeAt(pos++)) {
+            var ch = text.charCodeAt(pos++);
+            switch (ch) {
                 case 13 /* carriageReturn */:
                     if (text.charCodeAt(pos) === 10 /* lineFeed */) {
                         pos++;
@@ -574,6 +576,12 @@ var ts;
                 case 10 /* lineFeed */:
                     result.push(lineStart);
                     lineStart = pos;
+                    break;
+                default:
+                    if (ch > 127 /* maxAsciiCharacter */ && isLineBreak(ch)) {
+                        result.push(lineStart);
+                        lineStart = pos;
+                    }
                     break;
             }
         }
@@ -608,7 +616,7 @@ var ts;
     }
     ts.isWhiteSpace = isWhiteSpace;
     function isLineBreak(ch) {
-        return ch === 10 /* lineFeed */ || ch === 13 /* carriageReturn */ || ch === 8232 /* lineSeparator */ || ch === 8233 /* paragraphSeparator */;
+        return ch === 10 /* lineFeed */ || ch === 13 /* carriageReturn */ || ch === 8232 /* lineSeparator */ || ch === 8233 /* paragraphSeparator */ || ch === 133 /* nextLine */;
     }
     ts.isLineBreak = isLineBreak;
     function isDigit(ch) {
@@ -5423,18 +5431,17 @@ var ts;
         }
         function findSourceFile(filename, isDefaultLib, refFile, refStart, refLength) {
             var canonicalName = host.getCanonicalFileName(filename);
-            var file = getSourceFile(filename);
-            if (file) {
-                if (host.useCaseSensitiveFileNames() && canonicalName !== file.filename) {
+            if (ts.hasProperty(filesByName, canonicalName)) {
+                var file = filesByName[canonicalName];
+                if (file && host.useCaseSensitiveFileNames() && canonicalName !== file.filename) {
                     errors.push(ts.createFileDiagnostic(refFile, refStart, refLength, ts.Diagnostics.Filename_0_differs_from_already_included_filename_1_only_in_casing, filename, file.filename));
                 }
             }
             else {
-                file = host.getSourceFile(filename, options.target, function (hostErrorMessage) {
+                var file = filesByName[canonicalName] = host.getSourceFile(filename, options.target, function (hostErrorMessage) {
                     errors.push(ts.createFileDiagnostic(refFile, refStart, refLength, ts.Diagnostics.Cannot_read_file_0_Colon_1, filename, hostErrorMessage));
                 });
                 if (file) {
-                    filesByName[host.getCanonicalFileName(filename)] = file;
                     seenNoDefaultLib = seenNoDefaultLib || file.hasNoDefaultLib;
                     if (!options.noResolve) {
                         var basePath = ts.getDirectoryPath(filename);
@@ -5959,18 +5966,10 @@ var ts;
             function writeLiteral(s) {
                 if (s && s.length) {
                     write(s);
-                    var pos = 0;
-                    while (pos < s.length) {
-                        switch (s.charCodeAt(pos++)) {
-                            case 13 /* carriageReturn */:
-                                if (pos < s.length && s.charCodeAt(pos) === 10 /* lineFeed */) {
-                                    pos++;
-                                }
-                            case 10 /* lineFeed */:
-                                lineCount++;
-                                linePos = output.length - s.length + pos;
-                                break;
-                        }
+                    var lineStartsOfS = ts.getLineStarts(s);
+                    if (lineStartsOfS.length > 1) {
+                        lineCount = lineCount + lineStartsOfS.length - 1;
+                        linePos = output.length - s.length + lineStartsOfS[lineStartsOfS.length - 1];
                     }
                 }
             }
@@ -8388,7 +8387,7 @@ var ts;
             function writeReferencePath(referencedFile) {
                 var declFileName = referencedFile.flags & 512 /* DeclarationFile */ ? referencedFile.filename : shouldEmitToOwnFile(referencedFile) ? getOwnEmitOutputFilePath(referencedFile, ".d.ts") : ts.getModuleNameFromFilename(compilerOptions.out) + ".d.ts";
                 declFileName = ts.getRelativePathToDirectoryOrUrl(ts.getDirectoryPath(ts.normalizeSlashes(jsFilePath)), declFileName, compilerHost.getCurrentDirectory(), false);
-                referencePathsOutput += "/// <reference path='" + declFileName + "' />" + newLine;
+                referencePathsOutput += "/// <reference path=\"" + declFileName + "\" />" + newLine;
             }
             if (root) {
                 var addedGlobalFileReference = false;
@@ -9974,27 +9973,38 @@ var ts;
         }
         function resolveAnonymousTypeMembers(type) {
             var symbol = type.symbol;
-            var members = emptySymbols;
-            var callSignatures = emptyArray;
-            var constructSignatures = emptyArray;
-            if (symbol.flags & ts.SymbolFlags.HasExports) {
-                members = symbol.exports;
+            if (symbol.flags & 512 /* TypeLiteral */) {
+                var members = symbol.members;
+                var callSignatures = getSignaturesOfSymbol(members["__call"]);
+                var constructSignatures = getSignaturesOfSymbol(members["__new"]);
+                var stringIndexType = getIndexTypeOfSymbol(symbol, 0 /* String */);
+                var numberIndexType = getIndexTypeOfSymbol(symbol, 1 /* Number */);
             }
-            if (symbol.flags & (8 /* Function */ | 2048 /* Method */)) {
-                callSignatures = getSignaturesOfSymbol(symbol);
-            }
-            if (symbol.flags & 16 /* Class */) {
-                var classType = getDeclaredTypeOfClass(symbol);
-                constructSignatures = getSignaturesOfSymbol(symbol.members["__constructor"]);
-                if (!constructSignatures.length)
-                    constructSignatures = getDefaultConstructSignatures(classType);
-                if (classType.baseTypes.length) {
-                    var members = createSymbolTable(getNamedMembers(members));
-                    addInheritedMembers(members, getPropertiesOfType(getTypeOfSymbol(classType.baseTypes[0].symbol)));
+            else {
+                var members = emptySymbols;
+                var callSignatures = emptyArray;
+                var constructSignatures = emptyArray;
+                if (symbol.flags & ts.SymbolFlags.HasExports) {
+                    members = symbol.exports;
                 }
+                if (symbol.flags & (8 /* Function */ | 2048 /* Method */)) {
+                    callSignatures = getSignaturesOfSymbol(symbol);
+                }
+                if (symbol.flags & 16 /* Class */) {
+                    var classType = getDeclaredTypeOfClass(symbol);
+                    constructSignatures = getSignaturesOfSymbol(symbol.members["__constructor"]);
+                    if (!constructSignatures.length) {
+                        constructSignatures = getDefaultConstructSignatures(classType);
+                    }
+                    if (classType.baseTypes.length) {
+                        members = createSymbolTable(getNamedMembers(members));
+                        addInheritedMembers(members, getPropertiesOfType(getTypeOfSymbol(classType.baseTypes[0].symbol)));
+                    }
+                }
+                var stringIndexType = undefined;
+                var numberIndexType = (symbol.flags & 64 /* Enum */) ? stringType : undefined;
             }
-            var numberIndexType = (symbol.flags & 64 /* Enum */) ? stringType : undefined;
-            setObjectTypeMembers(type, members, callSignatures, constructSignatures, undefined, numberIndexType);
+            setObjectTypeMembers(type, members, callSignatures, constructSignatures, stringIndexType, numberIndexType);
         }
         function resolveObjectTypeMembers(type) {
             if (!type.members) {
@@ -10376,13 +10386,7 @@ var ts;
         function getTypeFromTypeLiteralNode(node) {
             var links = getNodeLinks(node);
             if (!links.resolvedType) {
-                var symbol = node.symbol;
-                var members = symbol.members;
-                var callSignatures = getSignaturesOfSymbol(members["__call"]);
-                var constructSignatures = getSignaturesOfSymbol(members["__new"]);
-                var stringIndexType = getIndexTypeOfSymbol(symbol, 0 /* String */);
-                var numberIndexType = getIndexTypeOfSymbol(symbol, 1 /* Number */);
-                links.resolvedType = createAnonymousType(symbol, members, callSignatures, constructSignatures, stringIndexType, numberIndexType);
+                links.resolvedType = createObjectType(8192 /* Anonymous */, node.symbol);
             }
             return links.resolvedType;
         }
@@ -12563,6 +12567,7 @@ var ts;
             if (fullTypeCheck) {
                 checkCollisionWithCapturedSuperVariable(node, node.name);
                 checkCollisionWithCapturedThisVariable(node, node.name);
+                checkCollistionWithRequireExportsInGeneratedCode(node, node.name);
                 checkCollisionWithArgumentsInGeneratedCode(node);
                 if (program.getCompilerOptions().noImplicitAny && !node.type) {
                     switch (node.kind) {
@@ -13090,6 +13095,18 @@ var ts;
                 }
             }
         }
+        function checkCollistionWithRequireExportsInGeneratedCode(node, name) {
+            if (!needCollisionCheckForIdentifier(node, name, "require") && !needCollisionCheckForIdentifier(node, name, "exports")) {
+                return;
+            }
+            if (node.kind === 172 /* ModuleDeclaration */ && !ts.isInstantiated(node)) {
+                return;
+            }
+            var parent = node.kind === 166 /* VariableDeclaration */ ? node.parent.parent : node.parent;
+            if (parent.kind === 177 /* SourceFile */ && ts.isExternalModule(parent)) {
+                error(name, ts.Diagnostics.Duplicate_identifier_0_Compiler_reserves_name_1_in_top_level_scope_of_an_external_module, name.text, name.text);
+            }
+        }
         function checkVariableDeclaration(node) {
             checkSourceElement(node.type);
             checkExportsOnMergedDeclarations(node);
@@ -13111,6 +13128,7 @@ var ts;
                 }
                 checkCollisionWithCapturedSuperVariable(node, node.name);
                 checkCollisionWithCapturedThisVariable(node, node.name);
+                checkCollistionWithRequireExportsInGeneratedCode(node, node.name);
                 if (!useTypeFromValueDeclaration) {
                     if (typeOfValueDeclaration !== unknownType && type !== unknownType && !isTypeIdenticalTo(typeOfValueDeclaration, type)) {
                         error(node.name, ts.Diagnostics.Subsequent_variable_declarations_must_have_the_same_type_Variable_0_must_be_of_type_1_but_here_has_type_2, ts.identifierToString(node.name), typeToString(typeOfValueDeclaration), typeToString(type));
@@ -13309,6 +13327,7 @@ var ts;
             checkTypeNameIsReserved(node.name, ts.Diagnostics.Class_name_cannot_be_0);
             checkTypeParameters(node.typeParameters);
             checkCollisionWithCapturedThisVariable(node, node.name);
+            checkCollistionWithRequireExportsInGeneratedCode(node, node.name);
             checkExportsOnMergedDeclarations(node);
             var symbol = getSymbolOfNode(node);
             var type = getDeclaredTypeOfSymbol(symbol);
@@ -13476,6 +13495,7 @@ var ts;
             }
             checkTypeNameIsReserved(node.name, ts.Diagnostics.Enum_name_cannot_be_0);
             checkCollisionWithCapturedThisVariable(node, node.name);
+            checkCollistionWithRequireExportsInGeneratedCode(node, node.name);
             checkExportsOnMergedDeclarations(node);
             var enumSymbol = getSymbolOfNode(node);
             var enumType = getDeclaredTypeOfSymbol(enumSymbol);
@@ -13532,6 +13552,7 @@ var ts;
         function checkModuleDeclaration(node) {
             if (fullTypeCheck) {
                 checkCollisionWithCapturedThisVariable(node, node.name);
+                checkCollistionWithRequireExportsInGeneratedCode(node, node.name);
                 checkExportsOnMergedDeclarations(node);
                 var symbol = getSymbolOfNode(node);
                 if (symbol.flags & 128 /* ValueModule */ && symbol.declarations.length > 1 && !ts.isInAmbientContext(node)) {
@@ -13564,6 +13585,7 @@ var ts;
         }
         function checkImportDeclaration(node) {
             checkCollisionWithCapturedThisVariable(node, node.name);
+            checkCollistionWithRequireExportsInGeneratedCode(node, node.name);
             var symbol = getSymbolOfNode(node);
             var target;
             if (node.entityName) {
