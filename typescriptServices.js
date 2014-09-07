@@ -8185,7 +8185,7 @@ var ts;
                 }
             }
             function resolveScriptReference(sourceFile, reference) {
-                var referenceFileName = compilerOptions.noResolve ? reference.filename : ts.normalizePath(ts.combinePaths(ts.getDirectoryPath(sourceFile.filename), reference.filename));
+                var referenceFileName = ts.normalizePath(ts.combinePaths(ts.getDirectoryPath(sourceFile.filename), reference.filename));
                 return program.getSourceFile(referenceFileName);
             }
             var referencePathsOutput = "";
@@ -8195,29 +8195,33 @@ var ts;
                 referencePathsOutput += "/// <reference path=\"" + declFileName + "\" />" + newLine;
             }
             if (root) {
-                var addedGlobalFileReference = false;
-                ts.forEach(root.referencedFiles, function (fileReference) {
-                    var referencedFile = resolveScriptReference(root, fileReference);
-                    if ((referencedFile.flags & 512 /* DeclarationFile */) || shouldEmitToOwnFile(referencedFile) || !addedGlobalFileReference) {
-                        writeReferencePath(referencedFile);
-                        if (!isExternalModuleOrDeclarationFile(referencedFile)) {
-                            addedGlobalFileReference = true;
+                if (!compilerOptions.noResolve) {
+                    var addedGlobalFileReference = false;
+                    ts.forEach(root.referencedFiles, function (fileReference) {
+                        var referencedFile = resolveScriptReference(root, fileReference);
+                        if ((referencedFile.flags & 512 /* DeclarationFile */) || shouldEmitToOwnFile(referencedFile) || !addedGlobalFileReference) {
+                            writeReferencePath(referencedFile);
+                            if (!isExternalModuleOrDeclarationFile(referencedFile)) {
+                                addedGlobalFileReference = true;
+                            }
                         }
-                    }
-                });
+                    });
+                }
                 emitNode(root);
             }
             else {
                 var emittedReferencedFiles = [];
                 ts.forEach(program.getSourceFiles(), function (sourceFile) {
                     if (!isExternalModuleOrDeclarationFile(sourceFile)) {
-                        ts.forEach(sourceFile.referencedFiles, function (fileReference) {
-                            var referencedFile = resolveScriptReference(sourceFile, fileReference);
-                            if (isExternalModuleOrDeclarationFile(referencedFile) && !ts.contains(emittedReferencedFiles, referencedFile)) {
-                                writeReferencePath(referencedFile);
-                                emittedReferencedFiles.push(referencedFile);
-                            }
-                        });
+                        if (!compilerOptions.noResolve) {
+                            ts.forEach(sourceFile.referencedFiles, function (fileReference) {
+                                var referencedFile = resolveScriptReference(sourceFile, fileReference);
+                                if (isExternalModuleOrDeclarationFile(referencedFile) && !ts.contains(emittedReferencedFiles, referencedFile)) {
+                                    writeReferencePath(referencedFile);
+                                    emittedReferencedFiles.push(referencedFile);
+                                }
+                            });
+                        }
                         emitNode(sourceFile);
                     }
                 });
@@ -11889,8 +11893,8 @@ var ts;
             var targetType = getTypeFromTypeNode(node.type);
             if (fullTypeCheck && targetType !== unknownType) {
                 var widenedType = getWidenedType(exprType);
-                if (!(isTypeAssignableTo(exprType, targetType) || isTypeAssignableTo(targetType, widenedType))) {
-                    checkTypeAssignableTo(targetType, widenedType, node, ts.Diagnostics.Neither_type_0_nor_type_1_is_assignable_to_the_other_Colon, ts.Diagnostics.Neither_type_0_nor_type_1_is_assignable_to_the_other);
+                if (!(isTypeAssignableTo(targetType, widenedType))) {
+                    checkTypeAssignableTo(exprType, targetType, node, ts.Diagnostics.Neither_type_0_nor_type_1_is_assignable_to_the_other_Colon, ts.Diagnostics.Neither_type_0_nor_type_1_is_assignable_to_the_other);
                 }
             }
             return targetType;
@@ -12030,25 +12034,25 @@ var ts;
                             }
                         }
                     }
+                    checkSignatureDeclaration(node);
                 }
-            }
-            if (fullTypeCheck && !(links.flags & 1 /* TypeChecked */)) {
-                checkSignatureDeclaration(node);
-                if (node.type) {
-                    checkIfNonVoidFunctionHasReturnExpressionsOrSingleThrowStatment(node, getTypeFromTypeNode(node.type));
-                }
-                if (node.body.kind === 168 /* FunctionBlock */) {
-                    checkSourceElement(node.body);
-                }
-                else {
-                    var exprType = checkExpression(node.body);
-                    if (node.type) {
-                        checkTypeAssignableTo(exprType, getTypeFromTypeNode(node.type), node.body, undefined, undefined);
-                    }
-                }
-                links.flags |= 1 /* TypeChecked */;
             }
             return type;
+        }
+        function checkFunctionExpressionBody(node) {
+            if (node.type) {
+                checkIfNonVoidFunctionHasReturnExpressionsOrSingleThrowStatment(node, getTypeFromTypeNode(node.type));
+            }
+            if (node.body.kind === 168 /* FunctionBlock */) {
+                checkSourceElement(node.body);
+            }
+            else {
+                var exprType = checkExpression(node.body);
+                if (node.type) {
+                    checkTypeAssignableTo(exprType, getTypeFromTypeNode(node.type), node.body, undefined, undefined);
+                }
+                checkFunctionExpressionBodies(node.body);
+            }
         }
         function checkArithmeticOperandType(operand, type, diagnostic) {
             if (!(type.flags & (1 /* Any */ | ts.TypeFlags.NumberLike))) {
@@ -13473,9 +13477,10 @@ var ts;
                 case 167 /* FunctionDeclaration */:
                     return checkFunctionDeclaration(node);
                 case 143 /* Block */:
+                    return checkBlock(node);
                 case 168 /* FunctionBlock */:
                 case 173 /* ModuleBlock */:
-                    return checkBlock(node);
+                    return checkBody(node);
                 case 144 /* VariableStatement */:
                     return checkVariableStatement(node);
                 case 146 /* ExpressionStatement */:
@@ -13521,12 +13526,79 @@ var ts;
                     return checkExportAssignment(node);
             }
         }
+        function checkFunctionExpressionBodies(node) {
+            switch (node.kind) {
+                case 136 /* FunctionExpression */:
+                case 137 /* ArrowFunction */:
+                    ts.forEach(node.parameters, checkFunctionExpressionBodies);
+                    checkFunctionExpressionBody(node);
+                    break;
+                case 116 /* Method */:
+                case 117 /* Constructor */:
+                case 118 /* GetAccessor */:
+                case 119 /* SetAccessor */:
+                case 167 /* FunctionDeclaration */:
+                    ts.forEach(node.parameters, checkFunctionExpressionBodies);
+                    break;
+                case 155 /* WithStatement */:
+                    checkFunctionExpressionBodies(node.expression);
+                    break;
+                case 114 /* Parameter */:
+                case 115 /* Property */:
+                case 127 /* ArrayLiteral */:
+                case 128 /* ObjectLiteral */:
+                case 129 /* PropertyAssignment */:
+                case 130 /* PropertyAccess */:
+                case 131 /* IndexedAccess */:
+                case 132 /* CallExpression */:
+                case 133 /* NewExpression */:
+                case 134 /* TypeAssertion */:
+                case 135 /* ParenExpression */:
+                case 138 /* PrefixOperator */:
+                case 139 /* PostfixOperator */:
+                case 140 /* BinaryExpression */:
+                case 141 /* ConditionalExpression */:
+                case 143 /* Block */:
+                case 168 /* FunctionBlock */:
+                case 173 /* ModuleBlock */:
+                case 144 /* VariableStatement */:
+                case 146 /* ExpressionStatement */:
+                case 147 /* IfStatement */:
+                case 148 /* DoStatement */:
+                case 149 /* WhileStatement */:
+                case 150 /* ForStatement */:
+                case 151 /* ForInStatement */:
+                case 152 /* ContinueStatement */:
+                case 153 /* BreakStatement */:
+                case 154 /* ReturnStatement */:
+                case 156 /* SwitchStatement */:
+                case 157 /* CaseClause */:
+                case 158 /* DefaultClause */:
+                case 159 /* LabelledStatement */:
+                case 160 /* ThrowStatement */:
+                case 161 /* TryStatement */:
+                case 162 /* TryBlock */:
+                case 163 /* CatchBlock */:
+                case 164 /* FinallyBlock */:
+                case 166 /* VariableDeclaration */:
+                case 169 /* ClassDeclaration */:
+                case 171 /* EnumDeclaration */:
+                case 176 /* EnumMember */:
+                case 177 /* SourceFile */:
+                    ts.forEachChild(node, checkFunctionExpressionBodies);
+                    break;
+            }
+        }
+        function checkBody(node) {
+            checkBlock(node);
+            checkFunctionExpressionBodies(node);
+        }
         function checkSourceFile(node) {
             var links = getNodeLinks(node);
             if (!(links.flags & 1 /* TypeChecked */)) {
                 emitExtends = false;
                 potentialThisCollisions.length = 0;
-                ts.forEach(node.statements, checkSourceElement);
+                checkBody(node);
                 if (ts.isExternalModule(node)) {
                     var symbol = getExportAssignmentSymbol(node.symbol);
                     if (symbol && symbol.flags & 4194304 /* Import */) {
@@ -21001,14 +21073,20 @@ var TypeScript;
                     throw TypeScript.Errors.invalidOperation();
                 }
             }
-            function replaceTokenInParent(oldToken, newToken) {
+            function replaceTokenInParent(node, oldToken, newToken) {
                 replaceTokenInParentWorker(oldToken, newToken);
                 var parent = oldToken.parent;
                 newToken.parent = parent;
-                TypeScript.Debug.assert(TypeScript.isNode(parent) || TypeScript.isList(parent) || TypeScript.isSeparatedList(parent));
-                var dataElement = parent;
-                if (dataElement.data) {
-                    dataElement.data &= 4 /* NodeParsedInStrictModeMask */;
+                while (true) {
+                    TypeScript.Debug.assert(TypeScript.isNode(parent) || TypeScript.isList(parent) || TypeScript.isSeparatedList(parent));
+                    var dataElement = parent;
+                    if (dataElement.data) {
+                        dataElement.data &= 4 /* NodeParsedInStrictModeMask */;
+                    }
+                    if (parent === node) {
+                        break;
+                    }
+                    parent = parent.parent;
                 }
             }
             function replaceTokenInParentWorker(oldToken, newToken) {
@@ -21050,14 +21128,14 @@ var TypeScript;
             function addSkippedTokenAfterNode(node, skippedToken) {
                 var oldToken = TypeScript.lastToken(node);
                 var newToken = addSkippedTokenAfterToken(oldToken, skippedToken);
-                replaceTokenInParent(oldToken, newToken);
+                replaceTokenInParent(node, oldToken, newToken);
                 return node;
             }
             function addSkippedTokensBeforeNode(node, skippedTokens) {
                 if (skippedTokens.length > 0) {
                     var oldToken = TypeScript.firstToken(node);
                     var newToken = addSkippedTokensBeforeToken(oldToken, skippedTokens);
-                    replaceTokenInParent(oldToken, newToken);
+                    replaceTokenInParent(node, oldToken, newToken);
                 }
                 return node;
             }
