@@ -2257,6 +2257,7 @@ var ts;
         AssertionLevel[AssertionLevel["VeryAggressive"] = 3] = "VeryAggressive";
     })(ts.AssertionLevel || (ts.AssertionLevel = {}));
     var AssertionLevel = ts.AssertionLevel;
+    var Debug;
     (function (Debug) {
         var currentAssertionLevel = 0 /* None */;
         function shouldAssert(level) {
@@ -2277,8 +2278,7 @@ var ts;
             Debug.assert(false, message);
         }
         Debug.fail = fail;
-    })(ts.Debug || (ts.Debug = {}));
-    var Debug = ts.Debug;
+    })(Debug = ts.Debug || (ts.Debug = {}));
 })(ts || (ts = {}));
 var ts;
 (function (ts) {
@@ -7133,14 +7133,12 @@ var ts;
                     return emitPinnedOrTripleSlashComments(node);
                 }
                 emitLeadingComments(node);
-                if (!(node.flags & 1 /* Export */)) {
-                    emitStart(node);
-                    write("var ");
-                    emit(node.name);
-                    write(";");
-                    emitEnd(node);
-                    writeLine();
-                }
+                emitStart(node);
+                write("var ");
+                emit(node.name);
+                write(";");
+                emitEnd(node);
+                writeLine();
                 emitStart(node);
                 write("(function (");
                 emitStart(node.name);
@@ -7164,21 +7162,15 @@ var ts;
                     scopeEmitEnd();
                 }
                 write(")(");
+                if (node.flags & 1 /* Export */) {
+                    emit(node.name);
+                    write(" = ");
+                }
                 emitModuleMemberName(node);
                 write(" || (");
                 emitModuleMemberName(node);
                 write(" = {}));");
                 emitEnd(node);
-                if (node.flags & 1 /* Export */) {
-                    writeLine();
-                    emitStart(node);
-                    write("var ");
-                    emit(node.name);
-                    write(" = ");
-                    emitModuleMemberName(node);
-                    emitEnd(node);
-                    write(";");
-                }
                 emitTrailingComments(node);
             }
             function emitImportDeclaration(node) {
@@ -10924,46 +10916,6 @@ var ts;
         function isTypeOfObjectLiteral(type) {
             return (type.flags & 8192 /* Anonymous */) && type.symbol && (type.symbol.flags & 1024 /* ObjectLiteral */) ? true : false;
         }
-        function getWidenedTypeOfObjectLiteral(type) {
-            var properties = getPropertiesOfType(type);
-            if (properties.length) {
-                var widenedTypes = [];
-                var propTypeWasWidened = false;
-                ts.forEach(properties, function (p) {
-                    var propType = getTypeOfSymbol(p);
-                    var widenedType = getWidenedType(propType);
-                    if (propType !== widenedType) {
-                        propTypeWasWidened = true;
-                        if (program.getCompilerOptions().noImplicitAny && getInnermostTypeOfNestedArrayTypes(widenedType) === anyType) {
-                            error(p.valueDeclaration, ts.Diagnostics.Object_literal_s_property_0_implicitly_has_an_1_type, p.name, typeToString(widenedType));
-                        }
-                    }
-                    widenedTypes.push(widenedType);
-                });
-                if (propTypeWasWidened) {
-                    var members = {};
-                    var index = 0;
-                    ts.forEach(properties, function (p) {
-                        var symbol = createSymbol(2 /* Property */ | 33554432 /* Transient */, p.name);
-                        symbol.declarations = p.declarations;
-                        symbol.parent = p.parent;
-                        symbol.type = widenedTypes[index++];
-                        symbol.target = p;
-                        if (p.valueDeclaration)
-                            symbol.valueDeclaration = p.valueDeclaration;
-                        members[symbol.name] = symbol;
-                    });
-                    var stringIndexType = getIndexTypeOfType(type, 0 /* String */);
-                    var numberIndexType = getIndexTypeOfType(type, 1 /* Number */);
-                    if (stringIndexType)
-                        stringIndexType = getWidenedType(stringIndexType);
-                    if (numberIndexType)
-                        numberIndexType = getWidenedType(numberIndexType);
-                    type = createAnonymousType(type.symbol, members, emptyArray, emptyArray, stringIndexType, numberIndexType);
-                }
-            }
-            return type;
-        }
         function isArrayType(type) {
             return type.flags & 4096 /* Reference */ && type.target === globalArrayType;
         }
@@ -10973,13 +10925,7 @@ var ts;
             }
             return type;
         }
-        function getWidenedTypeOfArrayLiteral(type) {
-            var elementType = type.typeArguments[0];
-            var widenedType = getWidenedType(elementType);
-            type = elementType !== widenedType ? createArrayType(widenedType) : type;
-            return type;
-        }
-        function getWidenedType(type) {
+        function getWidenedType(type, supressNoImplicitAnyErrors) {
             if (type.flags & (32 /* Undefined */ | 64 /* Null */)) {
                 return anyType;
             }
@@ -10990,6 +10936,52 @@ var ts;
                 return getWidenedTypeOfArrayLiteral(type);
             }
             return type;
+            function getWidenedTypeOfObjectLiteral(type) {
+                var properties = getPropertiesOfType(type);
+                if (properties.length) {
+                    var widenedTypes = [];
+                    var propTypeWasWidened = false;
+                    ts.forEach(properties, function (p) {
+                        var propType = getTypeOfSymbol(p);
+                        var widenedType = getWidenedType(propType);
+                        if (propType !== widenedType) {
+                            propTypeWasWidened = true;
+                            if (!supressNoImplicitAnyErrors && program.getCompilerOptions().noImplicitAny && getInnermostTypeOfNestedArrayTypes(widenedType) === anyType) {
+                                error(p.valueDeclaration, ts.Diagnostics.Object_literal_s_property_0_implicitly_has_an_1_type, p.name, typeToString(widenedType));
+                            }
+                        }
+                        widenedTypes.push(widenedType);
+                    });
+                    if (propTypeWasWidened) {
+                        var members = {};
+                        var index = 0;
+                        ts.forEach(properties, function (p) {
+                            var symbol = createSymbol(2 /* Property */ | 33554432 /* Transient */, p.name);
+                            symbol.declarations = p.declarations;
+                            symbol.parent = p.parent;
+                            symbol.type = widenedTypes[index++];
+                            symbol.target = p;
+                            if (p.valueDeclaration)
+                                symbol.valueDeclaration = p.valueDeclaration;
+                            members[symbol.name] = symbol;
+                        });
+                        var stringIndexType = getIndexTypeOfType(type, 0 /* String */);
+                        var numberIndexType = getIndexTypeOfType(type, 1 /* Number */);
+                        if (stringIndexType)
+                            stringIndexType = getWidenedType(stringIndexType);
+                        if (numberIndexType)
+                            numberIndexType = getWidenedType(numberIndexType);
+                        type = createAnonymousType(type.symbol, members, emptyArray, emptyArray, stringIndexType, numberIndexType);
+                    }
+                }
+                return type;
+            }
+            function getWidenedTypeOfArrayLiteral(type) {
+                var elementType = type.typeArguments[0];
+                var widenedType = getWidenedType(elementType, supressNoImplicitAnyErrors);
+                type = elementType !== widenedType ? createArrayType(widenedType) : type;
+                return type;
+            }
         }
         function forEachMatchingParameterType(source, target, callback) {
             var sourceMax = source.parameters.length;
@@ -11892,7 +11884,7 @@ var ts;
             var exprType = checkExpression(node.operand);
             var targetType = getTypeFromTypeNode(node.type);
             if (fullTypeCheck && targetType !== unknownType) {
-                var widenedType = getWidenedType(exprType);
+                var widenedType = getWidenedType(exprType, true);
                 if (!(isTypeAssignableTo(targetType, widenedType))) {
                     checkTypeAssignableTo(exprType, targetType, node, ts.Diagnostics.Neither_type_0_nor_type_1_is_assignable_to_the_other_Colon, ts.Diagnostics.Neither_type_0_nor_type_1_is_assignable_to_the_other);
                 }
@@ -15447,6 +15439,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var IntegerUtilities;
     (function (IntegerUtilities) {
         function integerDivide(numerator, denominator) {
             return (numerator / denominator) >> 0;
@@ -15469,8 +15462,7 @@ var TypeScript;
             return /^0(x|X)[0-9a-fA-F]+$/.test(text);
         }
         IntegerUtilities.isHexInteger = isHexInteger;
-    })(TypeScript.IntegerUtilities || (TypeScript.IntegerUtilities = {}));
-    var IntegerUtilities = TypeScript.IntegerUtilities;
+    })(IntegerUtilities = TypeScript.IntegerUtilities || (TypeScript.IntegerUtilities = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -15708,6 +15700,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var ScriptSnapshot;
     (function (ScriptSnapshot) {
         var StringScriptSnapshot = (function () {
             function StringScriptSnapshot(text) {
@@ -15735,11 +15728,11 @@ var TypeScript;
             return new StringScriptSnapshot(text);
         }
         ScriptSnapshot.fromString = fromString;
-    })(TypeScript.ScriptSnapshot || (TypeScript.ScriptSnapshot = {}));
-    var ScriptSnapshot = TypeScript.ScriptSnapshot;
+    })(ScriptSnapshot = TypeScript.ScriptSnapshot || (TypeScript.ScriptSnapshot = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var LineMap1;
     (function (LineMap1) {
         function fromSimpleText(text) {
             return new TypeScript.LineMap(function () { return TypeScript.TextUtilities.parseLineStarts({ charCodeAt: function (index) { return text.charCodeAt(index); }, length: text.length() }); }, text.length());
@@ -15753,11 +15746,11 @@ var TypeScript;
             return new TypeScript.LineMap(function () { return TypeScript.TextUtilities.parseLineStarts(text); }, text.length);
         }
         LineMap1.fromString = fromString;
-    })(TypeScript.LineMap1 || (TypeScript.LineMap1 = {}));
-    var LineMap1 = TypeScript.LineMap1;
+    })(LineMap1 = TypeScript.LineMap1 || (TypeScript.LineMap1 = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var SimpleText;
     (function (SimpleText) {
         var SimpleStringText = (function () {
             function SimpleStringText(value) {
@@ -15812,11 +15805,11 @@ var TypeScript;
             return new SimpleScriptSnapshotText(scriptSnapshot);
         }
         SimpleText.fromScriptSnapshot = fromScriptSnapshot;
-    })(TypeScript.SimpleText || (TypeScript.SimpleText = {}));
-    var SimpleText = TypeScript.SimpleText;
+    })(SimpleText = TypeScript.SimpleText || (TypeScript.SimpleText = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var TextUtilities;
     (function (TextUtilities) {
         function parseLineStarts(text) {
             var length = text.length;
@@ -15884,8 +15877,7 @@ var TypeScript;
             return c === 10 /* lineFeed */ || c === 13 /* carriageReturn */ || c === 133 /* nextLine */ || c === 8232 /* lineSeparator */ || c === 8233 /* paragraphSeparator */;
         }
         TextUtilities.isAnyLineBreakCharacter = isAnyLineBreakCharacter;
-    })(TypeScript.TextUtilities || (TypeScript.TextUtilities = {}));
-    var TextUtilities = TypeScript.TextUtilities;
+    })(TextUtilities = TypeScript.TextUtilities || (TypeScript.TextUtilities = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -16015,6 +16007,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var CharacterInfo;
     (function (CharacterInfo) {
         function isDecimalDigit(c) {
             return c >= 48 /* _0 */ && c <= 57 /* _9 */;
@@ -16070,8 +16063,7 @@ var TypeScript;
             return false;
         }
         CharacterInfo.isLineTerminator = isLineTerminator;
-    })(TypeScript.CharacterInfo || (TypeScript.CharacterInfo = {}));
-    var CharacterInfo = TypeScript.CharacterInfo;
+    })(CharacterInfo = TypeScript.CharacterInfo || (TypeScript.CharacterInfo = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -16373,6 +16365,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var SyntaxFacts;
     (function (SyntaxFacts) {
         var textToKeywordKind = {
             "any": 60 /* AnyKeyword */,
@@ -16744,11 +16737,11 @@ var TypeScript;
             return false;
         }
         SyntaxFacts.isType = isType;
-    })(TypeScript.SyntaxFacts || (TypeScript.SyntaxFacts = {}));
-    var SyntaxFacts = TypeScript.SyntaxFacts;
+    })(SyntaxFacts = TypeScript.SyntaxFacts || (TypeScript.SyntaxFacts = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Scanner;
     (function (Scanner) {
         TypeScript.Debug.assert(TypeScript.SyntaxKind.LastToken <= 127);
         var ScannerConstants;
@@ -17978,8 +17971,7 @@ var TypeScript;
             };
         }
         Scanner.createParserSource = createParserSource;
-    })(TypeScript.Scanner || (TypeScript.Scanner = {}));
-    var Scanner = TypeScript.Scanner;
+    })(Scanner = TypeScript.Scanner || (TypeScript.Scanner = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -18298,6 +18290,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Syntax;
     (function (Syntax) {
         Syntax._nextSyntaxID = 1;
         function childIndex(parent, child) {
@@ -18521,8 +18514,7 @@ var TypeScript;
             }
             return lineMap.getLineNumberFromPosition(TypeScript.end(_previousToken)) !== lineMap.getLineNumberFromPosition(TypeScript.start(token));
         }
-    })(TypeScript.Syntax || (TypeScript.Syntax = {}));
-    var Syntax = TypeScript.Syntax;
+    })(Syntax = TypeScript.Syntax || (TypeScript.Syntax = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -18923,6 +18915,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var SyntaxFacts;
     (function (SyntaxFacts) {
         function isDirectivePrologueElement(node) {
             if (node.kind() === 149 /* ExpressionStatement */) {
@@ -18947,11 +18940,11 @@ var TypeScript;
             return tokenKind === 11 /* IdentifierName */ || SyntaxFacts.isAnyKeyword(tokenKind);
         }
         SyntaxFacts.isIdentifierNameOrAnyKeyword = isIdentifierNameOrAnyKeyword;
-    })(TypeScript.SyntaxFacts || (TypeScript.SyntaxFacts = {}));
-    var SyntaxFacts = TypeScript.SyntaxFacts;
+    })(SyntaxFacts = TypeScript.SyntaxFacts || (TypeScript.SyntaxFacts = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Syntax;
     (function (Syntax) {
         var _emptyList = [];
         var _emptySeparatedList = [];
@@ -19011,8 +19004,7 @@ var TypeScript;
             return -1;
         }
         Syntax.nonSeparatorIndexOf = nonSeparatorIndexOf;
-    })(TypeScript.Syntax || (TypeScript.Syntax = {}));
-    var Syntax = TypeScript.Syntax;
+    })(Syntax = TypeScript.Syntax || (TypeScript.Syntax = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -19182,6 +19174,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Syntax;
     (function (Syntax) {
         function realizeToken(token, text) {
             return new RealizedToken(token.fullStart(), token.kind(), token.isKeywordConvertedToIdentifier(), token.leadingTrivia(text), token.text(), token.trailingTrivia(text));
@@ -19429,11 +19422,11 @@ var TypeScript;
             };
             return ConvertedKeywordToken;
         })();
-    })(TypeScript.Syntax || (TypeScript.Syntax = {}));
-    var Syntax = TypeScript.Syntax;
+    })(Syntax = TypeScript.Syntax || (TypeScript.Syntax = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Syntax;
     (function (Syntax) {
         var AbstractTrivia = (function () {
             function AbstractTrivia(_kind) {
@@ -19556,11 +19549,11 @@ var TypeScript;
             return result;
         }
         Syntax.splitMultiLineCommentTriviaIntoMultipleLines = splitMultiLineCommentTriviaIntoMultipleLines;
-    })(TypeScript.Syntax || (TypeScript.Syntax = {}));
-    var Syntax = TypeScript.Syntax;
+    })(Syntax = TypeScript.Syntax || (TypeScript.Syntax = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Syntax;
     (function (Syntax) {
         var EmptyTriviaList = (function () {
             function EmptyTriviaList() {
@@ -19733,8 +19726,7 @@ var TypeScript;
             return new NormalSyntaxTriviaList(trivia);
         }
         Syntax.triviaList = triviaList;
-    })(TypeScript.Syntax || (TypeScript.Syntax = {}));
-    var Syntax = TypeScript.Syntax;
+    })(Syntax = TypeScript.Syntax || (TypeScript.Syntax = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -20817,6 +20809,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Parser;
     (function (Parser) {
         Parser.syntaxFactory;
         var arrayPool = [];
@@ -23471,12 +23464,13 @@ var TypeScript;
             return parseSyntaxTree(source, isDeclaration);
         }
         Parser.parseSource = parseSource;
-    })(TypeScript.Parser || (TypeScript.Parser = {}));
-    var Parser = TypeScript.Parser;
+    })(Parser = TypeScript.Parser || (TypeScript.Parser = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Syntax;
     (function (Syntax) {
+        var Concrete;
         (function (Concrete) {
             TypeScript.Parser.syntaxFactory = Concrete;
             Concrete.isConcrete = true;
@@ -24258,10 +24252,8 @@ var TypeScript;
             })(TypeScript.SyntaxNode);
             Concrete.ModuleNameModuleReferenceSyntax = ModuleNameModuleReferenceSyntax;
             SourceUnitSyntax.prototype.__kind = 120 /* SourceUnit */, QualifiedNameSyntax.prototype.__kind = 121 /* QualifiedName */, ObjectTypeSyntax.prototype.__kind = 122 /* ObjectType */, FunctionTypeSyntax.prototype.__kind = 123 /* FunctionType */, ArrayTypeSyntax.prototype.__kind = 124 /* ArrayType */, ConstructorTypeSyntax.prototype.__kind = 125 /* ConstructorType */, GenericTypeSyntax.prototype.__kind = 126 /* GenericType */, TypeQuerySyntax.prototype.__kind = 127 /* TypeQuery */, InterfaceDeclarationSyntax.prototype.__kind = 128 /* InterfaceDeclaration */, FunctionDeclarationSyntax.prototype.__kind = 129 /* FunctionDeclaration */, ModuleDeclarationSyntax.prototype.__kind = 130 /* ModuleDeclaration */, ClassDeclarationSyntax.prototype.__kind = 131 /* ClassDeclaration */, EnumDeclarationSyntax.prototype.__kind = 132 /* EnumDeclaration */, ImportDeclarationSyntax.prototype.__kind = 133 /* ImportDeclaration */, ExportAssignmentSyntax.prototype.__kind = 134 /* ExportAssignment */, MemberFunctionDeclarationSyntax.prototype.__kind = 135 /* MemberFunctionDeclaration */, MemberVariableDeclarationSyntax.prototype.__kind = 136 /* MemberVariableDeclaration */, ConstructorDeclarationSyntax.prototype.__kind = 137 /* ConstructorDeclaration */, IndexMemberDeclarationSyntax.prototype.__kind = 138 /* IndexMemberDeclaration */, GetAccessorSyntax.prototype.__kind = 139 /* GetAccessor */, SetAccessorSyntax.prototype.__kind = 140 /* SetAccessor */, PropertySignatureSyntax.prototype.__kind = 141 /* PropertySignature */, CallSignatureSyntax.prototype.__kind = 142 /* CallSignature */, ConstructSignatureSyntax.prototype.__kind = 143 /* ConstructSignature */, IndexSignatureSyntax.prototype.__kind = 144 /* IndexSignature */, MethodSignatureSyntax.prototype.__kind = 145 /* MethodSignature */, BlockSyntax.prototype.__kind = 146 /* Block */, IfStatementSyntax.prototype.__kind = 147 /* IfStatement */, VariableStatementSyntax.prototype.__kind = 148 /* VariableStatement */, ExpressionStatementSyntax.prototype.__kind = 149 /* ExpressionStatement */, ReturnStatementSyntax.prototype.__kind = 150 /* ReturnStatement */, SwitchStatementSyntax.prototype.__kind = 151 /* SwitchStatement */, BreakStatementSyntax.prototype.__kind = 152 /* BreakStatement */, ContinueStatementSyntax.prototype.__kind = 153 /* ContinueStatement */, ForStatementSyntax.prototype.__kind = 154 /* ForStatement */, ForInStatementSyntax.prototype.__kind = 155 /* ForInStatement */, EmptyStatementSyntax.prototype.__kind = 156 /* EmptyStatement */, ThrowStatementSyntax.prototype.__kind = 157 /* ThrowStatement */, WhileStatementSyntax.prototype.__kind = 158 /* WhileStatement */, TryStatementSyntax.prototype.__kind = 159 /* TryStatement */, LabeledStatementSyntax.prototype.__kind = 160 /* LabeledStatement */, DoStatementSyntax.prototype.__kind = 161 /* DoStatement */, DebuggerStatementSyntax.prototype.__kind = 162 /* DebuggerStatement */, WithStatementSyntax.prototype.__kind = 163 /* WithStatement */, DeleteExpressionSyntax.prototype.__kind = 170 /* DeleteExpression */, TypeOfExpressionSyntax.prototype.__kind = 171 /* TypeOfExpression */, VoidExpressionSyntax.prototype.__kind = 172 /* VoidExpression */, ConditionalExpressionSyntax.prototype.__kind = 186 /* ConditionalExpression */, MemberAccessExpressionSyntax.prototype.__kind = 212 /* MemberAccessExpression */, InvocationExpressionSyntax.prototype.__kind = 213 /* InvocationExpression */, ArrayLiteralExpressionSyntax.prototype.__kind = 214 /* ArrayLiteralExpression */, ObjectLiteralExpressionSyntax.prototype.__kind = 215 /* ObjectLiteralExpression */, ObjectCreationExpressionSyntax.prototype.__kind = 216 /* ObjectCreationExpression */, ParenthesizedExpressionSyntax.prototype.__kind = 217 /* ParenthesizedExpression */, ParenthesizedArrowFunctionExpressionSyntax.prototype.__kind = 218 /* ParenthesizedArrowFunctionExpression */, SimpleArrowFunctionExpressionSyntax.prototype.__kind = 219 /* SimpleArrowFunctionExpression */, CastExpressionSyntax.prototype.__kind = 220 /* CastExpression */, ElementAccessExpressionSyntax.prototype.__kind = 221 /* ElementAccessExpression */, FunctionExpressionSyntax.prototype.__kind = 222 /* FunctionExpression */, OmittedExpressionSyntax.prototype.__kind = 223 /* OmittedExpression */, VariableDeclarationSyntax.prototype.__kind = 224 /* VariableDeclaration */, VariableDeclaratorSyntax.prototype.__kind = 225 /* VariableDeclarator */, ArgumentListSyntax.prototype.__kind = 226 /* ArgumentList */, ParameterListSyntax.prototype.__kind = 227 /* ParameterList */, TypeArgumentListSyntax.prototype.__kind = 228 /* TypeArgumentList */, TypeParameterListSyntax.prototype.__kind = 229 /* TypeParameterList */, EqualsValueClauseSyntax.prototype.__kind = 232 /* EqualsValueClause */, CaseSwitchClauseSyntax.prototype.__kind = 233 /* CaseSwitchClause */, DefaultSwitchClauseSyntax.prototype.__kind = 234 /* DefaultSwitchClause */, ElseClauseSyntax.prototype.__kind = 235 /* ElseClause */, CatchClauseSyntax.prototype.__kind = 236 /* CatchClause */, FinallyClauseSyntax.prototype.__kind = 237 /* FinallyClause */, TypeParameterSyntax.prototype.__kind = 238 /* TypeParameter */, ConstraintSyntax.prototype.__kind = 239 /* Constraint */, SimplePropertyAssignmentSyntax.prototype.__kind = 240 /* SimplePropertyAssignment */, FunctionPropertyAssignmentSyntax.prototype.__kind = 241 /* FunctionPropertyAssignment */, ParameterSyntax.prototype.__kind = 242 /* Parameter */, EnumElementSyntax.prototype.__kind = 243 /* EnumElement */, TypeAnnotationSyntax.prototype.__kind = 244 /* TypeAnnotation */, ExternalModuleReferenceSyntax.prototype.__kind = 245 /* ExternalModuleReference */, ModuleNameModuleReferenceSyntax.prototype.__kind = 246 /* ModuleNameModuleReference */;
-        })(Syntax.Concrete || (Syntax.Concrete = {}));
-        var Concrete = Syntax.Concrete;
-    })(TypeScript.Syntax || (TypeScript.Syntax = {}));
-    var Syntax = TypeScript.Syntax;
+        })(Concrete = Syntax.Concrete || (Syntax.Concrete = {}));
+    })(Syntax = TypeScript.Syntax || (TypeScript.Syntax = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -25492,6 +25484,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var IncrementalParser;
     (function (IncrementalParser) {
         function createParserSource(oldSyntaxTree, textChangeRange, text) {
             var fileName = oldSyntaxTree.fileName();
@@ -25891,11 +25884,11 @@ var TypeScript;
             return TypeScript.Parser.parseSource(createParserSource(oldSyntaxTree, textChangeRange, newText), oldSyntaxTree.isDeclaration());
         }
         IncrementalParser.parse = parse;
-    })(TypeScript.IncrementalParser || (TypeScript.IncrementalParser = {}));
-    var IncrementalParser = TypeScript.IncrementalParser;
+    })(IncrementalParser = TypeScript.IncrementalParser || (TypeScript.IncrementalParser = {}));
 })(TypeScript || (TypeScript = {}));
 var ts;
 (function (ts) {
+    var OutliningElementsCollector;
     (function (OutliningElementsCollector) {
         function collectElements(sourceFile) {
             var elements = [];
@@ -25945,11 +25938,11 @@ var ts;
             return elements;
         }
         OutliningElementsCollector.collectElements = collectElements;
-    })(ts.OutliningElementsCollector || (ts.OutliningElementsCollector = {}));
-    var OutliningElementsCollector = ts.OutliningElementsCollector;
+    })(OutliningElementsCollector = ts.OutliningElementsCollector || (ts.OutliningElementsCollector = {}));
 })(ts || (ts = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
         var NavigationBarItemGetter = (function () {
             function NavigationBarItemGetter() {
@@ -26196,11 +26189,11 @@ var TypeScript;
             return NavigationBarItemGetter;
         })();
         Services.NavigationBarItemGetter = NavigationBarItemGetter;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
         var BraceMatcher = (function () {
             function BraceMatcher() {
@@ -26256,12 +26249,13 @@ var TypeScript;
             return BraceMatcher;
         })();
         Services.BraceMatcher = BraceMatcher;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Breakpoints;
         (function (Breakpoints) {
             function createBreakpointSpanInfo(parentElement) {
                 var childElements = [];
@@ -27143,13 +27137,12 @@ var TypeScript;
                 return breakpointResolver.breakpointSpanOf(positionedToken);
             }
             Breakpoints.getBreakpointLocation = getBreakpointLocation;
-        })(Services.Breakpoints || (Services.Breakpoints = {}));
-        var Breakpoints = Services.Breakpoints;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Breakpoints = Services.Breakpoints || (Services.Breakpoints = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Indentation;
     (function (Indentation) {
         function columnForEndOfTokenAtPosition(syntaxTree, position, options) {
             var token = TypeScript.findToken(syntaxTree.sourceUnit(), position);
@@ -27245,12 +27238,13 @@ var TypeScript;
             return value.length;
         }
         Indentation.firstNonWhitespacePosition = firstNonWhitespacePosition;
-    })(TypeScript.Indentation || (TypeScript.Indentation = {}));
-    var Indentation = TypeScript.Indentation;
+    })(Indentation = TypeScript.Indentation || (TypeScript.Indentation = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var TextSnapshot = (function () {
                 function TextSnapshot(snapshot) {
@@ -27307,14 +27301,14 @@ var TypeScript;
                 return TextSnapshot;
             })();
             Formatting.TextSnapshot = TextSnapshot;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var TextSnapshotLine = (function () {
                 function TextSnapshotLine(_snapshot, _lineNumber, _start, _end, _lineBreak) {
@@ -27357,14 +27351,14 @@ var TypeScript;
                 return TextSnapshotLine;
             })();
             Formatting.TextSnapshotLine = TextSnapshotLine;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var SnapshotPoint = (function () {
                 function SnapshotPoint(snapshot, position) {
@@ -27380,14 +27374,14 @@ var TypeScript;
                 return SnapshotPoint;
             })();
             Formatting.SnapshotPoint = SnapshotPoint;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var FormattingContext = (function () {
                 function FormattingContext(snapshot, formattingRequestKind) {
@@ -27466,14 +27460,14 @@ var TypeScript;
                 return FormattingContext;
             })();
             Formatting.FormattingContext = FormattingContext;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var FormattingManager = (function () {
                 function FormattingManager(syntaxTree, snapshot, rulesProvider, editorOptions) {
@@ -27540,14 +27534,14 @@ var TypeScript;
                 return FormattingManager;
             })();
             Formatting.FormattingManager = FormattingManager;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             (function (FormattingRequestKind) {
                 FormattingRequestKind[FormattingRequestKind["FormatDocument"] = 0] = "FormatDocument";
@@ -27558,14 +27552,14 @@ var TypeScript;
                 FormattingRequestKind[FormattingRequestKind["FormatOnPaste"] = 5] = "FormatOnPaste";
             })(Formatting.FormattingRequestKind || (Formatting.FormattingRequestKind = {}));
             var FormattingRequestKind = Formatting.FormattingRequestKind;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var Rule = (function () {
                 function Rule(Descriptor, Operation, Flag) {
@@ -27580,14 +27574,14 @@ var TypeScript;
                 return Rule;
             })();
             Formatting.Rule = Rule;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             (function (RuleAction) {
                 RuleAction[RuleAction["Ignore"] = 0] = "Ignore";
@@ -27596,14 +27590,14 @@ var TypeScript;
                 RuleAction[RuleAction["Delete"] = 3] = "Delete";
             })(Formatting.RuleAction || (Formatting.RuleAction = {}));
             var RuleAction = Formatting.RuleAction;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var RuleDescriptor = (function () {
                 function RuleDescriptor(LeftTokenRange, RightTokenRange) {
@@ -27628,28 +27622,28 @@ var TypeScript;
                 return RuleDescriptor;
             })();
             Formatting.RuleDescriptor = RuleDescriptor;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             (function (RuleFlags) {
                 RuleFlags[RuleFlags["None"] = 0] = "None";
                 RuleFlags[RuleFlags["CanDeleteNewLines"] = 1] = "CanDeleteNewLines";
             })(Formatting.RuleFlags || (Formatting.RuleFlags = {}));
             var RuleFlags = Formatting.RuleFlags;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var RuleOperation = (function () {
                 function RuleOperation() {
@@ -27671,14 +27665,14 @@ var TypeScript;
                 return RuleOperation;
             })();
             Formatting.RuleOperation = RuleOperation;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var RuleOperationContext = (function () {
                 function RuleOperationContext() {
@@ -27706,14 +27700,14 @@ var TypeScript;
                 return RuleOperationContext;
             })();
             Formatting.RuleOperationContext = RuleOperationContext;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var Rules = (function () {
                 function Rules() {
@@ -28062,14 +28056,14 @@ var TypeScript;
                 return Rules;
             })();
             Formatting.Rules = Rules;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var RulesMap = (function () {
                 function RulesMap() {
@@ -28193,14 +28187,14 @@ var TypeScript;
                 return RulesBucket;
             })();
             Formatting.RulesBucket = RulesBucket;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var RulesProvider = (function () {
                 function RulesProvider(logger) {
@@ -28282,14 +28276,14 @@ var TypeScript;
                 return RulesProvider;
             })();
             Formatting.RulesProvider = RulesProvider;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var TextEditInfo = (function () {
                 function TextEditInfo(position, length, replaceWith) {
@@ -28303,15 +28297,16 @@ var TypeScript;
                 return TextEditInfo;
             })();
             Formatting.TextEditInfo = TextEditInfo;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
+            var Shared;
             (function (Shared) {
                 var TokenRangeAccess = (function () {
                     function TokenRangeAccess(from, to, except) {
@@ -28426,16 +28421,15 @@ var TypeScript;
                     return TokenRange;
                 })();
                 Shared.TokenRange = TokenRange;
-            })(Formatting.Shared || (Formatting.Shared = {}));
-            var Shared = Formatting.Shared;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+            })(Shared = Formatting.Shared || (Formatting.Shared = {}));
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var TokenSpan = (function (_super) {
                 __extends(TokenSpan, _super);
@@ -28446,14 +28440,14 @@ var TypeScript;
                 return TokenSpan;
             })(TypeScript.TextSpan);
             Formatting.TokenSpan = TokenSpan;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var IndentationNodeContext = (function () {
                 function IndentationNodeContext(parent, node, fullStart, indentationAmount, childIndentationAmountDelta) {
@@ -28519,14 +28513,14 @@ var TypeScript;
                 return IndentationNodeContext;
             })();
             Formatting.IndentationNodeContext = IndentationNodeContext;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var IndentationNodeContextPool = (function () {
                 function IndentationNodeContextPool() {
@@ -28553,14 +28547,14 @@ var TypeScript;
                 return IndentationNodeContextPool;
             })();
             Formatting.IndentationNodeContextPool = IndentationNodeContextPool;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var IndentationTrackingWalker = (function (_super) {
                 __extends(IndentationTrackingWalker, _super);
@@ -28767,14 +28761,14 @@ var TypeScript;
                 return IndentationTrackingWalker;
             })(TypeScript.SyntaxWalker);
             Formatting.IndentationTrackingWalker = IndentationTrackingWalker;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var MultipleTokenIndenter = (function (_super) {
                 __extends(MultipleTokenIndenter, _super);
@@ -28907,14 +28901,14 @@ var TypeScript;
                 return MultipleTokenIndenter;
             })(Formatting.IndentationTrackingWalker);
             Formatting.MultipleTokenIndenter = MultipleTokenIndenter;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var SingleTokenIndenter = (function (_super) {
                 __extends(SingleTokenIndenter, _super);
@@ -28939,14 +28933,14 @@ var TypeScript;
                 return SingleTokenIndenter;
             })(Formatting.IndentationTrackingWalker);
             Formatting.SingleTokenIndenter = SingleTokenIndenter;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
+        var Formatting;
         (function (Formatting) {
             var Formatter = (function (_super) {
                 __extends(Formatter, _super);
@@ -29156,10 +29150,8 @@ var TypeScript;
                 return Formatter;
             })(Formatting.MultipleTokenIndenter);
             Formatting.Formatter = Formatter;
-        })(Services.Formatting || (Services.Formatting = {}));
-        var Formatting = Services.Formatting;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+        })(Formatting = Services.Formatting || (Services.Formatting = {}));
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -29814,6 +29806,7 @@ var TypeScript;
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
+    var ASTHelpers;
     (function (ASTHelpers) {
         var sentinelEmptyArray = [];
         function isValidAstNode(ast) {
@@ -30385,8 +30378,7 @@ var TypeScript;
             return result;
         }
         ASTHelpers.getModuleNames = getModuleNames;
-    })(TypeScript.ASTHelpers || (TypeScript.ASTHelpers = {}));
-    var ASTHelpers = TypeScript.ASTHelpers;
+    })(ASTHelpers = TypeScript.ASTHelpers || (TypeScript.ASTHelpers = {}));
 })(TypeScript || (TypeScript = {}));
 var TypeScript;
 (function (TypeScript) {
@@ -33666,8 +33658,8 @@ var ts;
 })(ts || (ts = {}));
 var TypeScript;
 (function (TypeScript) {
+    var Services;
     (function (Services) {
         Services.TypeScriptServicesFactory = ts.TypeScriptServicesFactory;
-    })(TypeScript.Services || (TypeScript.Services = {}));
-    var Services = TypeScript.Services;
+    })(Services = TypeScript.Services || (TypeScript.Services = {}));
 })(TypeScript || (TypeScript = {}));

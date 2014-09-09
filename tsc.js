@@ -2257,6 +2257,7 @@ var ts;
         AssertionLevel[AssertionLevel["VeryAggressive"] = 3] = "VeryAggressive";
     })(ts.AssertionLevel || (ts.AssertionLevel = {}));
     var AssertionLevel = ts.AssertionLevel;
+    var Debug;
     (function (Debug) {
         var currentAssertionLevel = 0 /* None */;
         function shouldAssert(level) {
@@ -2277,8 +2278,7 @@ var ts;
             Debug.assert(false, message);
         }
         Debug.fail = fail;
-    })(ts.Debug || (ts.Debug = {}));
-    var Debug = ts.Debug;
+    })(Debug = ts.Debug || (ts.Debug = {}));
 })(ts || (ts = {}));
 var sys = (function () {
     function getWScriptSystem() {
@@ -7328,14 +7328,12 @@ var ts;
                     return emitPinnedOrTripleSlashComments(node);
                 }
                 emitLeadingComments(node);
-                if (!(node.flags & 1 /* Export */)) {
-                    emitStart(node);
-                    write("var ");
-                    emit(node.name);
-                    write(";");
-                    emitEnd(node);
-                    writeLine();
-                }
+                emitStart(node);
+                write("var ");
+                emit(node.name);
+                write(";");
+                emitEnd(node);
+                writeLine();
                 emitStart(node);
                 write("(function (");
                 emitStart(node.name);
@@ -7359,21 +7357,15 @@ var ts;
                     scopeEmitEnd();
                 }
                 write(")(");
+                if (node.flags & 1 /* Export */) {
+                    emit(node.name);
+                    write(" = ");
+                }
                 emitModuleMemberName(node);
                 write(" || (");
                 emitModuleMemberName(node);
                 write(" = {}));");
                 emitEnd(node);
-                if (node.flags & 1 /* Export */) {
-                    writeLine();
-                    emitStart(node);
-                    write("var ");
-                    emit(node.name);
-                    write(" = ");
-                    emitModuleMemberName(node);
-                    emitEnd(node);
-                    write(";");
-                }
                 emitTrailingComments(node);
             }
             function emitImportDeclaration(node) {
@@ -11119,46 +11111,6 @@ var ts;
         function isTypeOfObjectLiteral(type) {
             return (type.flags & 8192 /* Anonymous */) && type.symbol && (type.symbol.flags & 1024 /* ObjectLiteral */) ? true : false;
         }
-        function getWidenedTypeOfObjectLiteral(type) {
-            var properties = getPropertiesOfType(type);
-            if (properties.length) {
-                var widenedTypes = [];
-                var propTypeWasWidened = false;
-                ts.forEach(properties, function (p) {
-                    var propType = getTypeOfSymbol(p);
-                    var widenedType = getWidenedType(propType);
-                    if (propType !== widenedType) {
-                        propTypeWasWidened = true;
-                        if (program.getCompilerOptions().noImplicitAny && getInnermostTypeOfNestedArrayTypes(widenedType) === anyType) {
-                            error(p.valueDeclaration, ts.Diagnostics.Object_literal_s_property_0_implicitly_has_an_1_type, p.name, typeToString(widenedType));
-                        }
-                    }
-                    widenedTypes.push(widenedType);
-                });
-                if (propTypeWasWidened) {
-                    var members = {};
-                    var index = 0;
-                    ts.forEach(properties, function (p) {
-                        var symbol = createSymbol(2 /* Property */ | 33554432 /* Transient */, p.name);
-                        symbol.declarations = p.declarations;
-                        symbol.parent = p.parent;
-                        symbol.type = widenedTypes[index++];
-                        symbol.target = p;
-                        if (p.valueDeclaration)
-                            symbol.valueDeclaration = p.valueDeclaration;
-                        members[symbol.name] = symbol;
-                    });
-                    var stringIndexType = getIndexTypeOfType(type, 0 /* String */);
-                    var numberIndexType = getIndexTypeOfType(type, 1 /* Number */);
-                    if (stringIndexType)
-                        stringIndexType = getWidenedType(stringIndexType);
-                    if (numberIndexType)
-                        numberIndexType = getWidenedType(numberIndexType);
-                    type = createAnonymousType(type.symbol, members, emptyArray, emptyArray, stringIndexType, numberIndexType);
-                }
-            }
-            return type;
-        }
         function isArrayType(type) {
             return type.flags & 4096 /* Reference */ && type.target === globalArrayType;
         }
@@ -11168,13 +11120,7 @@ var ts;
             }
             return type;
         }
-        function getWidenedTypeOfArrayLiteral(type) {
-            var elementType = type.typeArguments[0];
-            var widenedType = getWidenedType(elementType);
-            type = elementType !== widenedType ? createArrayType(widenedType) : type;
-            return type;
-        }
-        function getWidenedType(type) {
+        function getWidenedType(type, supressNoImplicitAnyErrors) {
             if (type.flags & (32 /* Undefined */ | 64 /* Null */)) {
                 return anyType;
             }
@@ -11185,6 +11131,52 @@ var ts;
                 return getWidenedTypeOfArrayLiteral(type);
             }
             return type;
+            function getWidenedTypeOfObjectLiteral(type) {
+                var properties = getPropertiesOfType(type);
+                if (properties.length) {
+                    var widenedTypes = [];
+                    var propTypeWasWidened = false;
+                    ts.forEach(properties, function (p) {
+                        var propType = getTypeOfSymbol(p);
+                        var widenedType = getWidenedType(propType);
+                        if (propType !== widenedType) {
+                            propTypeWasWidened = true;
+                            if (!supressNoImplicitAnyErrors && program.getCompilerOptions().noImplicitAny && getInnermostTypeOfNestedArrayTypes(widenedType) === anyType) {
+                                error(p.valueDeclaration, ts.Diagnostics.Object_literal_s_property_0_implicitly_has_an_1_type, p.name, typeToString(widenedType));
+                            }
+                        }
+                        widenedTypes.push(widenedType);
+                    });
+                    if (propTypeWasWidened) {
+                        var members = {};
+                        var index = 0;
+                        ts.forEach(properties, function (p) {
+                            var symbol = createSymbol(2 /* Property */ | 33554432 /* Transient */, p.name);
+                            symbol.declarations = p.declarations;
+                            symbol.parent = p.parent;
+                            symbol.type = widenedTypes[index++];
+                            symbol.target = p;
+                            if (p.valueDeclaration)
+                                symbol.valueDeclaration = p.valueDeclaration;
+                            members[symbol.name] = symbol;
+                        });
+                        var stringIndexType = getIndexTypeOfType(type, 0 /* String */);
+                        var numberIndexType = getIndexTypeOfType(type, 1 /* Number */);
+                        if (stringIndexType)
+                            stringIndexType = getWidenedType(stringIndexType);
+                        if (numberIndexType)
+                            numberIndexType = getWidenedType(numberIndexType);
+                        type = createAnonymousType(type.symbol, members, emptyArray, emptyArray, stringIndexType, numberIndexType);
+                    }
+                }
+                return type;
+            }
+            function getWidenedTypeOfArrayLiteral(type) {
+                var elementType = type.typeArguments[0];
+                var widenedType = getWidenedType(elementType, supressNoImplicitAnyErrors);
+                type = elementType !== widenedType ? createArrayType(widenedType) : type;
+                return type;
+            }
         }
         function forEachMatchingParameterType(source, target, callback) {
             var sourceMax = source.parameters.length;
@@ -12087,7 +12079,7 @@ var ts;
             var exprType = checkExpression(node.operand);
             var targetType = getTypeFromTypeNode(node.type);
             if (fullTypeCheck && targetType !== unknownType) {
-                var widenedType = getWidenedType(exprType);
+                var widenedType = getWidenedType(exprType, true);
                 if (!(isTypeAssignableTo(targetType, widenedType))) {
                     checkTypeAssignableTo(exprType, targetType, node, ts.Diagnostics.Neither_type_0_nor_type_1_is_assignable_to_the_other_Colon, ts.Diagnostics.Neither_type_0_nor_type_1_is_assignable_to_the_other);
                 }
