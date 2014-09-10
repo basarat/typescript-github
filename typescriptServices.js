@@ -1532,6 +1532,7 @@ var ts;
         TypeFormatFlags[TypeFormatFlags["None"] = 0x00000000] = "None";
         TypeFormatFlags[TypeFormatFlags["WriteArrayAsGenericType"] = 0x00000001] = "WriteArrayAsGenericType";
         TypeFormatFlags[TypeFormatFlags["UseTypeOfFunction"] = 0x00000002] = "UseTypeOfFunction";
+        TypeFormatFlags[TypeFormatFlags["NoTruncation"] = 0x00000004] = "NoTruncation";
     })(ts.TypeFormatFlags || (ts.TypeFormatFlags = {}));
     var TypeFormatFlags = ts.TypeFormatFlags;
     (function (SymbolAccessibility) {
@@ -8281,6 +8282,7 @@ var ts;
         var typeCount = 0;
         var emptyArray = [];
         var emptySymbols = {};
+        var compilerOptions = program.getCompilerOptions();
         var checker = {
             getProgram: function () { return program; },
             getDiagnostics: getDiagnostics,
@@ -8991,7 +8993,7 @@ var ts;
                 }
                 return symbol.name;
             }
-            if (enclosingDeclaration && !(symbol.flags & (ts.SymbolFlags.PropertyOrAccessor | ts.SymbolFlags.Signature | 4096 /* Constructor */ | 2048 /* Method */ | 262144 /* TypeParameter */))) {
+            if (enclosingDeclaration && !(symbol.flags & 262144 /* TypeParameter */)) {
                 var symbolName;
                 while (symbol) {
                     var isFirstName = !symbolName;
@@ -9020,17 +9022,25 @@ var ts;
         function writeSymbolToTextWriter(symbol, enclosingDeclaration, meaning, writer) {
             writer.write(symbolToString(symbol, enclosingDeclaration, meaning));
         }
-        function createSingleLineTextWriter() {
+        function createSingleLineTextWriter(maxLength) {
             var result = "";
-            return {
-                write: function (s) {
+            var overflow = false;
+            function write(s) {
+                if (!overflow) {
                     result += s;
-                },
+                    if (result.length > maxLength) {
+                        result = result.substr(0, maxLength - 3) + "...";
+                        overflow = true;
+                    }
+                }
+            }
+            return {
+                write: write,
                 writeSymbol: function (symbol, enclosingDeclaration, meaning) {
                     writeSymbolToTextWriter(symbol, enclosingDeclaration, meaning, this);
                 },
                 writeLine: function () {
-                    result += " ";
+                    write(" ");
                 },
                 increaseIndent: function () {
                 },
@@ -9042,7 +9052,8 @@ var ts;
             };
         }
         function typeToString(type, enclosingDeclaration, flags) {
-            var stringWriter = createSingleLineTextWriter();
+            var maxLength = compilerOptions.noErrorTruncation || flags & 4 /* NoTruncation */ ? undefined : 100;
+            var stringWriter = createSingleLineTextWriter(maxLength);
             writeTypeToTextWriter(type, enclosingDeclaration, flags, stringWriter);
             return stringWriter.getText();
         }
@@ -9372,7 +9383,7 @@ var ts;
             checkImplicitAny(type);
             return type;
             function checkImplicitAny(type) {
-                if (!fullTypeCheck || !program.getCompilerOptions().noImplicitAny) {
+                if (!fullTypeCheck || !compilerOptions.noImplicitAny) {
                     return;
                 }
                 if (getInnermostTypeOfNestedArrayTypes(type) !== anyType) {
@@ -9456,7 +9467,7 @@ var ts;
                             type = getReturnTypeFromBody(getter);
                         }
                         else {
-                            if (program.getCompilerOptions().noImplicitAny) {
+                            if (compilerOptions.noImplicitAny) {
                                 error(setter, ts.Diagnostics.Property_0_implicitly_has_type_any_because_its_set_accessor_lacks_a_type_annotation, symbol.name);
                             }
                             type = anyType;
@@ -11618,7 +11629,7 @@ var ts;
                 if (stringIndexType) {
                     return stringIndexType;
                 }
-                if (program.getCompilerOptions().noImplicitAny && objectType !== anyType) {
+                if (compilerOptions.noImplicitAny && objectType !== anyType) {
                     error(node, ts.Diagnostics.Index_signature_of_object_type_implicitly_has_an_any_type);
                 }
                 return anyType;
@@ -11689,17 +11700,6 @@ var ts;
             });
             return getSignatureInstantiation(signature, getInferredTypes(context));
         }
-        function inferentiallyTypeExpession(expr, contextualType, contextualMapper) {
-            var type = checkExpressionWithContextualType(expr, contextualType, contextualMapper);
-            var signature = getSingleCallSignature(type);
-            if (signature && signature.typeParameters) {
-                var contextualSignature = getSingleCallSignature(contextualType);
-                if (contextualSignature && !contextualSignature.typeParameters) {
-                    type = getOrCreateTypeFromSignature(instantiateSignatureInContextOf(signature, contextualSignature, contextualMapper));
-                }
-            }
-            return type;
-        }
         function inferTypeArguments(signature, args, excludeArgument) {
             var typeParameters = signature.typeParameters;
             var context = createInferenceContext(typeParameters);
@@ -11707,14 +11707,14 @@ var ts;
             for (var i = 0; i < args.length; i++) {
                 if (!excludeArgument || excludeArgument[i] === undefined) {
                     var parameterType = getTypeAtPosition(signature, i);
-                    inferTypes(context, inferentiallyTypeExpession(args[i], parameterType, mapper), parameterType);
+                    inferTypes(context, checkExpressionWithContextualType(args[i], parameterType, mapper), parameterType);
                 }
             }
             if (excludeArgument) {
                 for (var i = 0; i < args.length; i++) {
                     if (excludeArgument[i] === false) {
                         var parameterType = getTypeAtPosition(signature, i);
-                        inferTypes(context, inferentiallyTypeExpession(args[i], parameterType, mapper), parameterType);
+                        inferTypes(context, checkExpressionWithContextualType(args[i], parameterType, mapper), parameterType);
                     }
                 }
             }
@@ -11872,7 +11872,7 @@ var ts;
             if (node.kind === 133 /* NewExpression */) {
                 var declaration = signature.declaration;
                 if (declaration && (declaration.kind !== 117 /* Constructor */ && declaration.kind !== 121 /* ConstructSignature */)) {
-                    if (program.getCompilerOptions().noImplicitAny) {
+                    if (compilerOptions.noImplicitAny) {
                         error(node, ts.Diagnostics.new_expression_whose_target_lacks_a_construct_signature_implicitly_has_an_any_type);
                     }
                     return anyType;
@@ -11911,7 +11911,7 @@ var ts;
             if (func.body.kind !== 168 /* FunctionBlock */) {
                 var unwidenedType = checkAndMarkExpression(func.body, contextualMapper);
                 var widenedType = getWidenedType(unwidenedType);
-                if (fullTypeCheck && program.getCompilerOptions().noImplicitAny && widenedType !== unwidenedType && getInnermostTypeOfNestedArrayTypes(widenedType) === anyType) {
+                if (fullTypeCheck && compilerOptions.noImplicitAny && widenedType !== unwidenedType && getInnermostTypeOfNestedArrayTypes(widenedType) === anyType) {
                     error(func, ts.Diagnostics.Function_expression_which_lacks_return_type_annotation_implicitly_has_an_0_return_type, typeToString(widenedType));
                 }
                 return widenedType;
@@ -11924,7 +11924,7 @@ var ts;
                     return unknownType;
                 }
                 var widenedType = getWidenedType(commonType);
-                if (fullTypeCheck && program.getCompilerOptions().noImplicitAny && widenedType !== commonType && getInnermostTypeOfNestedArrayTypes(widenedType) === anyType) {
+                if (fullTypeCheck && compilerOptions.noImplicitAny && widenedType !== commonType && getInnermostTypeOfNestedArrayTypes(widenedType) === anyType) {
                     var typeName = typeToString(widenedType);
                     if (func.name) {
                         error(func, ts.Diagnostics._0_which_lacks_return_type_annotation_implicitly_has_an_1_return_type, ts.identifierToString(func.name), typeName);
@@ -12260,6 +12260,22 @@ var ts;
             return result;
         }
         function checkExpression(node, contextualMapper) {
+            var type = checkExpressionNode(node, contextualMapper);
+            if (contextualMapper && contextualMapper !== identityMapper) {
+                var signature = getSingleCallSignature(type);
+                if (signature && signature.typeParameters) {
+                    var contextualType = getContextualType(node);
+                    if (contextualType) {
+                        var contextualSignature = getSingleCallSignature(contextualType);
+                        if (contextualSignature && !contextualSignature.typeParameters) {
+                            type = getOrCreateTypeFromSignature(instantiateSignatureInContextOf(signature, contextualSignature, contextualMapper));
+                        }
+                    }
+                }
+            }
+            return type;
+        }
+        function checkExpressionNode(node, contextualMapper) {
             switch (node.kind) {
                 case 55 /* Identifier */:
                     return checkIdentifier(node);
@@ -12370,7 +12386,7 @@ var ts;
                 checkCollisionWithCapturedThisVariable(node, node.name);
                 checkCollistionWithRequireExportsInGeneratedCode(node, node.name);
                 checkCollisionWithArgumentsInGeneratedCode(node);
-                if (program.getCompilerOptions().noImplicitAny && !node.type) {
+                if (compilerOptions.noImplicitAny && !node.type) {
                     switch (node.kind) {
                         case 121 /* ConstructSignature */:
                             error(node, ts.Diagnostics.Construct_signature_which_lacks_return_type_annotation_implicitly_has_an_any_return_type);
@@ -12781,7 +12797,7 @@ var ts;
             if (node.type && !isAccessor(node.kind)) {
                 checkIfNonVoidFunctionHasReturnExpressionsOrSingleThrowStatment(node, getTypeFromTypeNode(node.type));
             }
-            if (fullTypeCheck && program.getCompilerOptions().noImplicitAny && !node.body && !node.type) {
+            if (fullTypeCheck && compilerOptions.noImplicitAny && !node.body && !node.type) {
                 if (!isPrivateWithinAmbient(node)) {
                     var typeName = typeToString(anyType);
                     if (node.name) {
@@ -14078,7 +14094,7 @@ var ts;
             return target !== unknownSymbol && ((target.flags & ts.SymbolFlags.Value) !== 0);
         }
         function shouldEmitDeclarations() {
-            return program.getCompilerOptions().declaration && !program.getDiagnostics().length && !getDiagnostics().length;
+            return compilerOptions.declaration && !program.getDiagnostics().length && !getDiagnostics().length;
         }
         function isReferencedImportDeclaration(node) {
             var symbol = getSymbolOfNode(node);

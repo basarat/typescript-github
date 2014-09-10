@@ -3828,6 +3828,23 @@ declare var HTMLCollection: {
     new(): HTMLCollection;
 }
 
+interface BlobPropertyBag {
+    type?: string;
+    endings?: string;
+}
+
+interface Blob {
+    type: string;
+    size: number;
+    msDetachStream(): any;
+    slice(start?: number, end?: number, contentType?: string): Blob;
+    msClose(): void;
+}
+declare var Blob: {
+    prototype: Blob;
+    new (blobParts?: any[], options?: BlobPropertyBag): Blob;
+}
+
 interface NavigatorID {
     appVersion: string;
     appName: string;
@@ -11967,18 +11984,6 @@ interface FileReader extends MSBaseReader {
 declare var FileReader: {
     prototype: FileReader;
     new(): FileReader;
-}
-
-interface Blob {
-    type: string;
-    size: number;
-    msDetachStream(): any;
-    slice(start?: number, end?: number, contentType?: string): Blob;
-    msClose(): void;
-}
-declare var Blob: {
-    prototype: Blob;
-    new(): Blob;
 }
 
 interface ApplicationCache extends EventTarget {
