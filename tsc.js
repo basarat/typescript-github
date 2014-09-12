@@ -1960,6 +1960,8 @@ var ts;
     }
     ts.getLocaleSpecificMessage = getLocaleSpecificMessage;
     function createFileDiagnostic(file, start, length, message) {
+        Debug.assert(start >= 0, "start must be non-negative, is " + start);
+        Debug.assert(length >= 0, "length must be non-negative, is " + length);
         var text = getLocaleSpecificMessage(message.key);
         if (arguments.length > 4) {
             text = formatStringFromArgs(text, arguments, 4);
@@ -2003,6 +2005,8 @@ var ts;
     }
     ts.chainDiagnosticMessages = chainDiagnosticMessages;
     function flattenDiagnosticChain(file, start, length, diagnosticChain, newLine) {
+        Debug.assert(start >= 0, "start must be non-negative, is " + start);
+        Debug.assert(length >= 0, "length must be non-negative, is " + length);
         var code = diagnosticChain.code;
         var category = diagnosticChain.category;
         var messageText = "";
@@ -2545,7 +2549,7 @@ var ts;
     function createDiagnosticForNode(node, message, arg0, arg1, arg2) {
         node = getErrorSpanForNode(node);
         var file = getSourceFileOfNode(node);
-        var start = ts.skipTrivia(file.text, node.pos);
+        var start = node.kind === 111 /* Missing */ ? node.pos : ts.skipTrivia(file.text, node.pos);
         var length = node.end - start;
         return ts.createFileDiagnostic(file, start, length, message, arg0, arg1, arg2);
     }
@@ -2736,6 +2740,101 @@ var ts;
         }
     }
     ts.forEachChild = forEachChild;
+    function forEachReturnStatement(body, visitor) {
+        return traverse(body);
+        function traverse(node) {
+            switch (node.kind) {
+                case 154 /* ReturnStatement */:
+                    return visitor(node);
+                case 143 /* Block */:
+                case 168 /* FunctionBlock */:
+                case 147 /* IfStatement */:
+                case 148 /* DoStatement */:
+                case 149 /* WhileStatement */:
+                case 150 /* ForStatement */:
+                case 151 /* ForInStatement */:
+                case 155 /* WithStatement */:
+                case 156 /* SwitchStatement */:
+                case 157 /* CaseClause */:
+                case 158 /* DefaultClause */:
+                case 159 /* LabelledStatement */:
+                case 161 /* TryStatement */:
+                case 162 /* TryBlock */:
+                case 163 /* CatchBlock */:
+                case 164 /* FinallyBlock */:
+                    return forEachChild(node, traverse);
+            }
+        }
+    }
+    ts.forEachReturnStatement = forEachReturnStatement;
+    function isAnyFunction(node) {
+        if (node) {
+            switch (node.kind) {
+                case 136 /* FunctionExpression */:
+                case 167 /* FunctionDeclaration */:
+                case 137 /* ArrowFunction */:
+                case 116 /* Method */:
+                case 118 /* GetAccessor */:
+                case 119 /* SetAccessor */:
+                case 117 /* Constructor */:
+                    return true;
+            }
+        }
+        return false;
+    }
+    ts.isAnyFunction = isAnyFunction;
+    function getContainingFunction(node) {
+        while (true) {
+            node = node.parent;
+            if (!node || isAnyFunction(node)) {
+                return node;
+            }
+        }
+    }
+    ts.getContainingFunction = getContainingFunction;
+    function getThisContainer(node, includeArrowFunctions) {
+        while (true) {
+            node = node.parent;
+            if (!node) {
+                return undefined;
+            }
+            switch (node.kind) {
+                case 137 /* ArrowFunction */:
+                    if (!includeArrowFunctions) {
+                        continue;
+                    }
+                case 167 /* FunctionDeclaration */:
+                case 136 /* FunctionExpression */:
+                case 172 /* ModuleDeclaration */:
+                case 115 /* Property */:
+                case 116 /* Method */:
+                case 117 /* Constructor */:
+                case 118 /* GetAccessor */:
+                case 119 /* SetAccessor */:
+                case 171 /* EnumDeclaration */:
+                case 177 /* SourceFile */:
+                    return node;
+            }
+        }
+    }
+    ts.getThisContainer = getThisContainer;
+    function getSuperContainer(node) {
+        while (true) {
+            node = node.parent;
+            if (!node) {
+                return undefined;
+            }
+            switch (node.kind) {
+                case 115 /* Property */:
+                case 116 /* Method */:
+                case 117 /* Constructor */:
+                case 118 /* GetAccessor */:
+                case 119 /* SetAccessor */:
+                    return node;
+            }
+        }
+    }
+    ts.getSuperContainer = getSuperContainer;
     function hasRestParameters(s) {
         return s.parameters.length > 0 && (s.parameters[s.parameters.length - 1].flags & 8 /* Rest */) !== 0;
     }
@@ -4736,10 +4835,11 @@ var ts;
             parseExpected(88 /* VarKeyword */);
             node.declarations = parseVariableDeclarationList(flags, false);
             parseSemicolon();
+            finishNode(node);
             if (!node.declarations.length && file.syntacticErrors.length === errorCountBeforeVarStatement) {
                 grammarErrorOnNode(node, ts.Diagnostics.Variable_declaration_list_cannot_be_empty);
             }
-            return finishNode(node);
+            return node;
         }
         function parseFunctionDeclaration(pos, flags) {
             var node = createNode(167 /* FunctionDeclaration */, pos);
@@ -9567,10 +9667,13 @@ var ts;
                 }
             }
             if (declaration.initializer) {
-                var unwidenedType = checkAndMarkExpression(declaration.initializer);
-                var type = getWidenedType(unwidenedType);
-                if (type !== unwidenedType) {
-                    checkImplicitAny(type);
+                var type = checkAndMarkExpression(declaration.initializer);
+                if (declaration.kind !== 129 /* PropertyAssignment */) {
+                    var unwidenedType = type;
+                    type = getWidenedType(type);
+                    if (type !== unwidenedType) {
+                        checkImplicitAny(type);
+                    }
                 }
                 return type;
             }
@@ -11402,28 +11505,6 @@ var ts;
             checkCollisionWithIndexVariableInGeneratedCode(node, node);
             return getTypeOfSymbol(getExportSymbolOfValueSymbolIfExported(symbol));
         }
-        function getThisContainer(node) {
-            while (true) {
-                node = node.parent;
-                if (!node) {
-                    return node;
-                }
-                switch (node.kind) {
-                    case 167 /* FunctionDeclaration */:
-                    case 136 /* FunctionExpression */:
-                    case 172 /* ModuleDeclaration */:
-                    case 115 /* Property */:
-                    case 116 /* Method */:
-                    case 117 /* Constructor */:
-                    case 118 /* GetAccessor */:
-                    case 119 /* SetAccessor */:
-                    case 171 /* EnumDeclaration */:
-                    case 177 /* SourceFile */:
-                    case 137 /* ArrowFunction */:
-                        return node;
-                }
-            }
-        }
         function captureLexicalThis(node, container) {
             var classNode = container.parent && container.parent.kind === 169 /* ClassDeclaration */ ? container.parent : undefined;
             getNodeLinks(node).flags |= 2 /* LexicalThis */;
@@ -11435,10 +11516,10 @@ var ts;
             }
         }
         function checkThisExpression(node) {
-            var container = getThisContainer(node);
+            var container = ts.getThisContainer(node, true);
             var needToCaptureLexicalThis = false;
-            while (container.kind === 137 /* ArrowFunction */) {
-                container = getThisContainer(container);
+            if (container.kind === 137 /* ArrowFunction */) {
+                container = ts.getThisContainer(container, false);
                 needToCaptureLexicalThis = true;
             }
             switch (container.kind) {
@@ -11581,7 +11662,7 @@ var ts;
             return undefined;
         }
         function getContextualTypeForReturnExpression(node) {
-            var func = getContainingFunction(node);
+            var func = ts.getContainingFunction(node);
             if (func) {
                 if (func.type || func.kind === 117 /* Constructor */ || func.kind === 118 /* GetAccessor */ && getSetAccessorTypeAnnotationNode(getDeclarationOfKind(func.symbol, 119 /* SetAccessor */))) {
                     return getReturnTypeOfSignature(getSignatureFromDeclaration(func));
@@ -12132,35 +12213,9 @@ var ts;
             }
             return voidType;
         }
-        function forEachReturnStatement(body, visitor) {
-            return traverse(body);
-            function traverse(node) {
-                switch (node.kind) {
-                    case 154 /* ReturnStatement */:
-                        return visitor(node);
-                    case 143 /* Block */:
-                    case 168 /* FunctionBlock */:
-                    case 147 /* IfStatement */:
-                    case 148 /* DoStatement */:
-                    case 149 /* WhileStatement */:
-                    case 150 /* ForStatement */:
-                    case 151 /* ForInStatement */:
-                    case 155 /* WithStatement */:
-                    case 156 /* SwitchStatement */:
-                    case 157 /* CaseClause */:
-                    case 158 /* DefaultClause */:
-                    case 159 /* LabelledStatement */:
-                    case 161 /* TryStatement */:
-                    case 162 /* TryBlock */:
-                    case 163 /* CatchBlock */:
-                    case 164 /* FinallyBlock */:
-                        return ts.forEachChild(node, traverse);
-                }
-            }
-        }
         function checkAndAggregateReturnExpressionTypes(body, contextualMapper) {
             var aggregatedTypes = [];
-            forEachReturnStatement(body, function (returnStatement) {
+            ts.forEachReturnStatement(body, function (returnStatement) {
                 var expr = returnStatement.expression;
                 if (expr) {
                     var type = checkAndMarkExpression(expr, contextualMapper);
@@ -12172,7 +12227,7 @@ var ts;
             return aggregatedTypes;
         }
         function bodyContainsAReturnStatement(funcBody) {
-            return forEachReturnStatement(funcBody, function (returnStatement) {
+            return ts.forEachReturnStatement(funcBody, function (returnStatement) {
                 return true;
             });
         }
@@ -13202,17 +13257,9 @@ var ts;
         }
         function checkBreakOrContinueStatement(node) {
         }
-        function getContainingFunction(node) {
-            while (true) {
-                node = node.parent;
-                if (!node || node.kind === 167 /* FunctionDeclaration */ || node.kind === 136 /* FunctionExpression */ || node.kind === 137 /* ArrowFunction */ || node.kind === 116 /* Method */ || node.kind === 117 /* Constructor */ || node.kind === 118 /* GetAccessor */ || node.kind === 119 /* SetAccessor */) {
-                    return node;
-                }
-            }
-        }
         function checkReturnStatement(node) {
             if (node.expression && !(getNodeLinks(node.expression).flags & 1 /* TypeChecked */)) {
-                var func = getContainingFunction(node);
+                var func = ts.getContainingFunction(node);
                 if (func) {
                     if (func.kind === 119 /* SetAccessor */) {
                         if (node.expression) {
