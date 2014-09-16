@@ -10904,10 +10904,12 @@ var ts;
                             continue;
                         }
                         if (getDeclarationFlagsFromSymbol(sourceProp) & 32 /* Private */ || getDeclarationFlagsFromSymbol(targetProp) & 32 /* Private */) {
-                            if (reportErrors) {
-                                reportError(ts.Diagnostics.Private_property_0_cannot_be_reimplemented, symbolToString(targetProp));
+                            if (sourceProp.valueDeclaration !== targetProp.valueDeclaration) {
+                                if (reportErrors) {
+                                    reportError(ts.Diagnostics.Private_property_0_cannot_be_reimplemented, symbolToString(targetProp));
+                                }
+                                return false;
                             }
-                            return false;
                         }
                         if (!isRelatedTo(getTypeOfSymbol(sourceProp), getTypeOfSymbol(targetProp), reportErrors)) {
                             if (reportErrors) {
