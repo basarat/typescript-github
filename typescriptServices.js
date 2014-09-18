@@ -5233,17 +5233,27 @@ var ts;
                 var start = refPos;
                 var length = refEnd - refPos;
             }
+            var diagnostic;
             if (hasExtension(filename)) {
                 if (!ts.fileExtensionIs(filename, ".ts")) {
-                    errors.push(ts.createFileDiagnostic(refFile, start, length, ts.Diagnostics.File_0_must_have_extension_ts_or_d_ts, filename));
+                    diagnostic = ts.Diagnostics.File_0_must_have_extension_ts_or_d_ts;
                 }
                 else if (!findSourceFile(filename, isDefaultLib, refFile, refPos, refEnd)) {
-                    errors.push(ts.createFileDiagnostic(refFile, start, length, ts.Diagnostics.File_0_not_found, filename));
+                    diagnostic = ts.Diagnostics.File_0_not_found;
                 }
             }
             else {
                 if (!(findSourceFile(filename + ".ts", isDefaultLib, refFile, refPos, refEnd) || findSourceFile(filename + ".d.ts", isDefaultLib, refFile, refPos, refEnd))) {
-                    errors.push(ts.createFileDiagnostic(refFile, start, length, ts.Diagnostics.File_0_not_found, filename + ".ts"));
+                    diagnostic = ts.Diagnostics.File_0_not_found;
+                    filename += ".ts";
+                }
+            }
+            if (diagnostic) {
+                if (refFile) {
+                    errors.push(ts.createFileDiagnostic(refFile, start, length, diagnostic, filename));
+                }
+                else {
+                    errors.push(ts.createCompilerDiagnostic(diagnostic, filename));
                 }
             }
         }
