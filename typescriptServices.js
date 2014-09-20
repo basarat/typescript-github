@@ -2808,7 +2808,7 @@ var ts;
         }
         function grammarErrorOnNode(node, message, arg0, arg1, arg2) {
             var span = getErrorSpanForNode(node);
-            var start = ts.skipTrivia(file.text, span.pos);
+            var start = span.end > span.pos ? ts.skipTrivia(file.text, span.pos) : span.pos;
             var length = span.end - start;
             file.syntacticErrors.push(ts.createFileDiagnostic(file, start, length, message, arg0, arg1, arg2));
         }
