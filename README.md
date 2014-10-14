@@ -9,7 +9,7 @@ This is meant to be used as pre-release builds if you want to try the compiler /
 npm install https://github.com/Arnavion/typescript-github/tarball/<release name>
 ```
 
-Each release is named after the day it was built and the git commit hash in Microsoft/TypeScript/release-1.1 that it was built from.
+Each release is named after the day it was built and the git commit hash in Microsoft/TypeScript/master that it was built from.
 
 
 ### Build
@@ -29,7 +29,7 @@ cd $typeScriptDirectory
 
 git clean -xfd
 git fetch origin
-git reset --hard origin/release-1.1
+git reset --hard origin/master
 
 commitHash=`git rev-parse HEAD`
 
