@@ -35754,7 +35754,15 @@ var ts;
                     }
                 }
                 else if (flags & ts.SymbolFlags.Module) {
-                    return ClassificationTypeNames.moduleName;
+                    if (meaningAtPosition & 4 /* Namespace */ || (meaningAtPosition & 1 /* Value */ && hasValueSideModule(symbol))) {
+                        return ClassificationTypeNames.moduleName;
+                    }
+                }
+                return undefined;
+                function hasValueSideModule(symbol) {
+                    return ts.forEach(symbol.declarations, function (declaration) {
+                        return declaration.kind === 178 /* ModuleDeclaration */ && ts.isInstantiated(declaration);
+                    });
                 }
             }
             function processNode(node) {
