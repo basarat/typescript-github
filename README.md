@@ -37,16 +37,15 @@ commitHash=`git rev-parse HEAD`
 npm install jake
 
 # Build once with LKG
-./node_modules/.bin/jake local --trace
-./node_modules/.bin/jake LKG --trace
+./node_modules/.bin/jake generate-diagnostics lib built/local/tsc.js --trace
+cp ./built/local/tsc.js ./bin/tsc.js
 
 # Rebuild with itself
 rm -rf ./built
 ./node_modules/.bin/jake local --trace
-./node_modules/.bin/jake LKG --trace
 
 # Copy output
-cp ./bin/lib.core.d.ts ./bin/lib.d.ts ./bin/lib.dom.d.ts ./bin/lib.webworker.d.ts ./bin/tsc.js ./bin/typescriptServices.js ./bin/tsc $typeScriptGithubDirectory
+cp ./built/local/lib.core.d.ts ./built/local/lib.d.ts ./built/local/lib.dom.d.ts ./built/local/lib.webworker.d.ts ./built/local/tsc.js ./built/local/typescriptServices.js ./bin/tsc $typeScriptGithubDirectory
 
 # Manual verification here
 # ...
