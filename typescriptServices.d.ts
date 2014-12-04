@@ -189,27 +189,26 @@ declare module ts {
         DebuggerStatement = 182,
         VariableDeclaration = 183,
         FunctionDeclaration = 184,
-        FunctionBlock = 185,
-        ClassDeclaration = 186,
-        InterfaceDeclaration = 187,
-        TypeAliasDeclaration = 188,
-        EnumDeclaration = 189,
-        ModuleDeclaration = 190,
-        ModuleBlock = 191,
-        ImportDeclaration = 192,
-        ExportAssignment = 193,
-        ExternalModuleReference = 194,
-        CaseClause = 195,
-        DefaultClause = 196,
-        HeritageClause = 197,
-        CatchClause = 198,
-        PropertyAssignment = 199,
-        ShorthandPropertyAssignment = 200,
-        EnumMember = 201,
-        SourceFile = 202,
-        Program = 203,
-        SyntaxList = 204,
-        Count = 205,
+        ClassDeclaration = 185,
+        InterfaceDeclaration = 186,
+        TypeAliasDeclaration = 187,
+        EnumDeclaration = 188,
+        ModuleDeclaration = 189,
+        ModuleBlock = 190,
+        ImportDeclaration = 191,
+        ExportAssignment = 192,
+        ExternalModuleReference = 193,
+        CaseClause = 194,
+        DefaultClause = 195,
+        HeritageClause = 196,
+        CatchClause = 197,
+        PropertyAssignment = 198,
+        ShorthandPropertyAssignment = 199,
+        EnumMember = 200,
+        SourceFile = 201,
+        Program = 202,
+        SyntaxList = 203,
+        Count = 204,
         FirstAssignment = 51,
         LastAssignment = 62,
         FirstReservedWord = 64,
@@ -285,11 +284,6 @@ declare module ts {
         right: Identifier;
     }
     type EntityName = Identifier | QualifiedName;
-    interface ParsedSignature {
-        typeParameters?: NodeArray<TypeParameterDeclaration>;
-        parameters: NodeArray<ParameterDeclaration>;
-        type?: TypeNode;
-    }
     type DeclarationName = Identifier | LiteralExpression | ComputedPropertyName;
     interface Declaration extends Node {
         _declarationBrand: any;
@@ -303,7 +297,10 @@ declare module ts {
         constraint?: TypeNode;
         expression?: Expression;
     }
-    interface SignatureDeclaration extends Declaration, ParsedSignature {
+    interface SignatureDeclaration extends Declaration {
+        typeParameters?: NodeArray<TypeParameterDeclaration>;
+        parameters: NodeArray<ParameterDeclaration>;
+        type?: TypeNode;
     }
     interface VariableDeclaration extends Declaration {
         name: Identifier;
@@ -318,15 +315,25 @@ declare module ts {
         initializer?: Expression;
     }
     interface PropertyDeclaration extends Declaration, ClassElement {
+        _propertyDeclarationBrand: any;
         questionToken?: Node;
         type?: TypeNode;
         initializer?: Expression;
     }
     type VariableOrParameterDeclaration = VariableDeclaration | ParameterDeclaration;
     type VariableOrParameterOrPropertyDeclaration = VariableOrParameterDeclaration | PropertyDeclaration;
-    interface ShorthandPropertyDeclaration extends Declaration {
+    interface ObjectLiteralElement extends Declaration {
+        _objectLiteralBrandBrand: any;
+    }
+    interface ShorthandPropertyAssignment extends ObjectLiteralElement {
         name: Identifier;
         questionToken?: Node;
+    }
+    interface PropertyAssignment extends ObjectLiteralElement {
+        _propertyAssignmentBrand: any;
+        name: DeclarationName;
+        questionToken?: Node;
+        initializer: Expression;
     }
     interface FunctionLikeDeclaration extends SignatureDeclaration {
         _functionLikeDeclarationBrand: any;
@@ -338,14 +345,15 @@ declare module ts {
         name: Identifier;
         body?: Block;
     }
-    interface MethodDeclaration extends FunctionLikeDeclaration, ClassElement {
+    interface MethodDeclaration extends FunctionLikeDeclaration, ClassElement, ObjectLiteralElement {
         body?: Block;
     }
     interface ConstructorDeclaration extends FunctionLikeDeclaration, ClassElement {
         body?: Block;
     }
-    interface AccessorDeclaration extends FunctionLikeDeclaration, ClassElement {
-        body?: Block;
+    interface AccessorDeclaration extends FunctionLikeDeclaration, ClassElement, ObjectLiteralElement {
+        _accessorDeclarationBrand: any;
+        body: Block;
     }
     interface IndexSignatureDeclaration extends SignatureDeclaration, ClassElement {
         _indexSignatureDeclarationBrand: any;
@@ -454,7 +462,7 @@ declare module ts {
         elements: NodeArray<Expression>;
     }
     interface ObjectLiteralExpression extends PrimaryExpression, Declaration {
-        properties: NodeArray<Declaration>;
+        properties: NodeArray<ObjectLiteralElement>;
     }
     interface PropertyAccessExpression extends MemberExpression {
         expression: LeftHandSideExpression;
@@ -709,7 +717,7 @@ declare module ts {
         getFullyQualifiedName(symbol: Symbol): string;
         getAugmentedPropertiesOfType(type: Type): Symbol[];
         getRootSymbols(symbol: Symbol): Symbol[];
-        getContextualType(node: Node): Type;
+        getContextualType(node: Expression): Type;
         getResolvedSignature(node: CallLikeExpression, candidatesOutArray?: Signature[]): Signature;
         getSignatureFromDeclaration(declaration: SignatureDeclaration): Signature;
         isImplementationOfOverload(node: FunctionLikeDeclaration): boolean;
@@ -3546,6 +3554,8 @@ declare module ts {
     function forEachChild<T>(node: Node, cbNode: (node: Node) => T, cbNodes?: (nodes: Node[]) => T): T;
     function forEachReturnStatement<T>(body: Block, visitor: (stmt: ReturnStatement) => T): T;
     function isAnyFunction(node: Node): boolean;
+    function isFunctionBlock(node: Node): boolean;
+    function isObjectLiteralMethod(node: Node): boolean;
     function getContainingFunction(node: Node): FunctionLikeDeclaration;
     function getThisContainer(node: Node, includeArrowFunctions: boolean): Node;
     function getSuperContainer(node: Node): Node;
