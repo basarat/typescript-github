@@ -257,6 +257,8 @@ declare module ts {
         DisallowIn = 2,
         Yield = 4,
         GeneratorParameter = 8,
+        ContainsError = 16,
+        HasPropagatedChildContainsErrorFlag = 32,
     }
     interface Node extends TextRange {
         kind: SyntaxKind;
@@ -699,8 +701,7 @@ declare module ts {
         getSymbolCount(): number;
         getTypeCount(): number;
         emitFiles(targetSourceFile?: SourceFile): EmitResult;
-        getParentOfSymbol(symbol: Symbol): Symbol;
-        getNarrowedTypeOfSymbol(symbol: Symbol, node: Node): Type;
+        getTypeOfSymbolAtLocation(symbol: Symbol, node: Node): Type;
         getDeclaredTypeOfSymbol(symbol: Symbol): Type;
         getPropertiesOfType(type: Type): Symbol[];
         getPropertyOfType(type: Type, propertyName: string): Symbol;
@@ -708,9 +709,9 @@ declare module ts {
         getIndexTypeOfType(type: Type, kind: IndexKind): Type;
         getReturnTypeOfSignature(signature: Signature): Type;
         getSymbolsInScope(location: Node, meaning: SymbolFlags): Symbol[];
-        getSymbolInfo(node: Node): Symbol;
+        getSymbolAtLocation(node: Node): Symbol;
         getShorthandAssignmentValueSymbol(location: Node): Symbol;
-        getTypeOfNode(node: Node): Type;
+        getTypeAtLocation(node: Node): Type;
         typeToString(type: Type, enclosingDeclaration?: Node, flags?: TypeFormatFlags): string;
         symbolToString(symbol: Symbol, enclosingDeclaration?: Node, meaning?: SymbolFlags): string;
         getSymbolDisplayBuilder(): SymbolDisplayBuilder;
@@ -3503,6 +3504,7 @@ declare module ts {
         scan(): SyntaxKind;
         setText(text: string): void;
         setTextPos(textPos: number): void;
+        lookAhead<T>(callback: () => T): T;
         tryScan<T>(callback: () => T): T;
     }
     function tokenToString(t: SyntaxKind): string;
@@ -3524,14 +3526,16 @@ declare module ts {
     function getTrailingCommentRanges(text: string, pos: number): CommentRange[];
     function isIdentifierStart(ch: number, languageVersion: ScriptTarget): boolean;
     function isIdentifierPart(ch: number, languageVersion: ScriptTarget): boolean;
-    function createScanner(languageVersion: ScriptTarget, skipTrivia: boolean, text?: string, onError?: ErrorCallback, onComment?: CommentCallback): Scanner;
+    function createScanner(languageVersion: ScriptTarget, skipTrivia: boolean, text?: string, onError?: ErrorCallback): Scanner;
 }
 declare module ts {
     function getFullWidth(node: Node): number;
+    function containsParseError(node: Node): boolean;
     function getNodeConstructor(kind: SyntaxKind): new () => Node;
     function getSourceFileOfNode(node: Node): SourceFile;
     function nodePosToString(node: Node): string;
     function getStartPosOfNode(node: Node): number;
+    function isMissingNode(node: Node): boolean;
     function getTokenPosOfNode(node: Node, sourceFile?: SourceFile): number;
     function getSourceTextOfNodeFromSourceFile(sourceFile: SourceFile, node: Node): string;
     function getTextOfNodeFromSourceText(sourceText: string, node: Node): string;
@@ -3682,7 +3686,6 @@ declare module ts {
     function findListItemInfo(node: Node): ListItemInfo;
     function findChildOfKind(n: Node, kind: SyntaxKind, sourceFile?: SourceFile): Node;
     function findContainingList(node: Node): Node;
-    function findListItemIndexContainingPosition(list: Node, position: number): number;
     function getTouchingWord(sourceFile: SourceFile, position: number): Node;
     function getTouchingPropertyName(sourceFile: SourceFile, position: number): Node;
     function getTouchingToken(sourceFile: SourceFile, position: number, includeItemAtEndPosition?: (n: Node) => boolean): Node;

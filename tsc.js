@@ -256,6 +256,8 @@ var ts;
         ParserContextFlags[ParserContextFlags["DisallowIn"] = 2] = "DisallowIn";
         ParserContextFlags[ParserContextFlags["Yield"] = 4] = "Yield";
         ParserContextFlags[ParserContextFlags["GeneratorParameter"] = 8] = "GeneratorParameter";
+        ParserContextFlags[ParserContextFlags["ContainsError"] = 16] = "ContainsError";
+        ParserContextFlags[ParserContextFlags["HasPropagatedChildContainsErrorFlag"] = 32] = "HasPropagatedChildContainsErrorFlag";
     })(ts.ParserContextFlags || (ts.ParserContextFlags = {}));
     var ParserContextFlags = ts.ParserContextFlags;
     (function (EmitReturnStatus) {
@@ -565,15 +567,15 @@ var ts;
     })(ts.Comparison || (ts.Comparison = {}));
     var Comparison = ts.Comparison;
     function forEach(array, callback) {
-        var result;
         if (array) {
             for (var i = 0, len = array.length; i < len; i++) {
-                if (result = callback(array[i])) {
-                    break;
+                var result = callback(array[i]);
+                if (result) {
+                    return result;
                 }
             }
         }
-        return result;
+        return undefined;
     }
     ts.forEach = forEach;
     function contains(array, value) {
@@ -2115,7 +2117,7 @@ var ts;
         return ch >= 65 /* A */ && ch <= 90 /* Z */ || ch >= 97 /* a */ && ch <= 122 /* z */ || ch >= 48 /* _0 */ && ch <= 57 /* _9 */ || ch === 36 /* $ */ || ch === 95 /* _ */ || ch > 127 /* maxAsciiCharacter */ && isUnicodeIdentifierPart(ch, languageVersion);
     }
     ts.isIdentifierPart = isIdentifierPart;
-    function createScanner(languageVersion, skipTrivia, text, onError, onComment) {
+    function createScanner(languageVersion, skipTrivia, text, onError) {
         var pos;
         var len;
         var startPos;
@@ -2500,9 +2502,6 @@ var ts;
                                 }
                                 pos++;
                             }
-                            if (onComment) {
-                                onComment(tokenPos, pos);
-                            }
                             if (skipTrivia) {
                                 continue;
                             }
@@ -2527,9 +2526,6 @@ var ts;
                             }
                             if (!commentClosed) {
                                 error(ts.Diagnostics.Asterisk_Slash_expected);
-                            }
-                            if (onComment) {
-                                onComment(tokenPos, pos);
                             }
                             if (skipTrivia) {
                                 continue;
@@ -2745,7 +2741,7 @@ var ts;
             pos = tokenPos;
             return token = scanTemplateAndSetTokenValue();
         }
-        function tryScan(callback) {
+        function speculationHelper(callback, isLookahead) {
             var savePos = pos;
             var saveStartPos = startPos;
             var saveTokenPos = tokenPos;
@@ -2753,7 +2749,7 @@ var ts;
             var saveTokenValue = tokenValue;
             var savePrecedingLineBreak = precedingLineBreak;
             var result = callback();
-            if (!result) {
+            if (!result || isLookahead) {
                 pos = savePos;
                 startPos = saveStartPos;
                 tokenPos = saveTokenPos;
@@ -2762,6 +2758,12 @@ var ts;
                 precedingLineBreak = savePrecedingLineBreak;
             }
             return result;
+        }
+        function lookAhead(callback) {
+            return speculationHelper(callback, true);
+        }
+        function tryScan(callback) {
+            return speculationHelper(callback, false);
         }
         function setText(newText) {
             text = newText || "";
@@ -2793,7 +2795,8 @@ var ts;
             scan: scan,
             setText: setText,
             setTextPos: setTextPos,
-            tryScan: tryScan
+            tryScan: tryScan,
+            lookAhead: lookAhead
         };
     }
     ts.createScanner = createScanner;
@@ -2805,6 +2808,20 @@ var ts;
         return node.end - node.pos;
     }
     ts.getFullWidth = getFullWidth;
+    function hasFlag(val, flag) {
+        return (val & flag) !== 0;
+    }
+    function containsParseError(node) {
+        if (!hasFlag(node.parserContextFlags, 32 /* HasPropagatedChildContainsErrorFlag */)) {
+            var val = hasFlag(node.parserContextFlags, 16 /* ContainsError */) || forEachChild(node, containsParseError);
+            if (val) {
+                node.parserContextFlags |= 16 /* ContainsError */;
+            }
+            node.parserContextFlags |= 32 /* HasPropagatedChildContainsErrorFlag */;
+        }
+        return hasFlag(node.parserContextFlags, 16 /* ContainsError */);
+    }
+    ts.containsParseError = containsParseError;
     function getNodeConstructor(kind) {
         return nodeConstructors[kind] || (nodeConstructors[kind] = ts.objectAllocator.getNodeConstructor(kind));
     }
@@ -2832,19 +2849,29 @@ var ts;
         return node.pos;
     }
     ts.getStartPosOfNode = getStartPosOfNode;
+    function isMissingNode(node) {
+        return node.pos === node.end && node.kind !== 1 /* EndOfFileToken */;
+    }
+    ts.isMissingNode = isMissingNode;
     function getTokenPosOfNode(node, sourceFile) {
-        if (node.pos === node.end) {
+        if (isMissingNode(node)) {
             return node.pos;
         }
         return ts.skipTrivia((sourceFile || getSourceFileOfNode(node)).text, node.pos);
     }
     ts.getTokenPosOfNode = getTokenPosOfNode;
     function getSourceTextOfNodeFromSourceFile(sourceFile, node) {
+        if (isMissingNode(node)) {
+            return "";
+        }
         var text = sourceFile.text;
         return text.substring(ts.skipTrivia(text, node.pos), node.end);
     }
     ts.getSourceTextOfNodeFromSourceFile = getSourceTextOfNodeFromSourceFile;
     function getTextOfNodeFromSourceText(sourceText, node) {
+        if (isMissingNode(node)) {
+            return "";
+        }
         return sourceText.substring(ts.skipTrivia(sourceText, node.pos), node.end);
     }
     ts.getTextOfNodeFromSourceText = getTextOfNodeFromSourceText;
@@ -2946,23 +2973,27 @@ var ts;
     ts.fullTripleSlashReferencePathRegEx = /^(\/\/\/\s*<reference\s+path\s*=\s*)('|")(.+?)\2.*?\/>/;
     function forEachChild(node, cbNode, cbNodes) {
         function child(node) {
-            if (node)
+            if (node) {
                 return cbNode(node);
+            }
         }
         function children(nodes) {
             if (nodes) {
-                if (cbNodes)
+                if (cbNodes) {
                     return cbNodes(nodes);
-                var result;
-                for (var i = 0, len = nodes.length; i < len; i++) {
-                    if (result = cbNode(nodes[i]))
-                        break;
                 }
-                return result;
+                for (var i = 0, len = nodes.length; i < len; i++) {
+                    var result = cbNode(nodes[i]);
+                    if (result) {
+                        return result;
+                    }
+                }
+                return undefined;
             }
         }
-        if (!node)
+        if (!node) {
             return;
+        }
         switch (node.kind) {
             case 120 /* QualifiedName */:
                 return child(node.left) || child(node.right);
@@ -3531,12 +3562,6 @@ var ts;
         }
     }
     ;
-    var LookAheadMode;
-    (function (LookAheadMode) {
-        LookAheadMode[LookAheadMode["NotLookingAhead"] = 0] = "NotLookingAhead";
-        LookAheadMode[LookAheadMode["NoErrorYet"] = 1] = "NoErrorYet";
-        LookAheadMode[LookAheadMode["Error"] = 2] = "Error";
-    })(LookAheadMode || (LookAheadMode = {}));
     function getFileReferenceFromReferencePath(comment, commentRange) {
         var simpleReferenceRegEx = /^\/\/\/\s*<reference\s+/gim;
         var isNoDefaultLibRegEx = /^(\/\/\/\s*<reference\s+no-default-lib\s*=\s*)('|")(.+?)\2\s*\/>/gim;
@@ -3607,16 +3632,14 @@ var ts;
     }
     function createSourceFile(filename, sourceText, languageVersion, version, isOpen) {
         if (isOpen === void 0) { isOpen = false; }
-        var scanner;
         var token;
         var parsingContext;
-        var commentRanges;
         var identifiers = {};
         var identifierCount = 0;
         var nodeCount = 0;
         var lineStarts;
-        var lookAheadMode = 0 /* NotLookingAhead */;
         var contextFlags = 0;
+        var parseErrorBeforeNextFinishedNode = false;
         function setContextFlag(val, flag) {
             if (val) {
                 contextFlags |= flag;
@@ -3694,28 +3717,21 @@ var ts;
         function getPositionFromSourceLineAndCharacter(line, character) {
             return ts.getPositionFromLineAndCharacter(getLineStarts(), line, character);
         }
-        function parseErrorAtCurrentToken(message, arg0, arg1, arg2) {
+        function parseErrorAtCurrentToken(message, arg0) {
             var start = scanner.getTokenPos();
             var length = scanner.getTextPos() - start;
-            parseErrorAtPosition(start, length, message, arg0, arg1, arg2);
+            parseErrorAtPosition(start, length, message, arg0);
         }
-        function parseErrorAtPosition(start, length, message, arg0, arg1, arg2) {
-            var lastErrorPosition = sourceFile.parseDiagnostics.length ? sourceFile.parseDiagnostics[sourceFile.parseDiagnostics.length - 1].start : -1;
-            if (start !== lastErrorPosition) {
-                var diagnostic = ts.createFileDiagnostic(sourceFile, start, length, message, arg0, arg1, arg2);
-                sourceFile.parseDiagnostics.push(diagnostic);
+        function parseErrorAtPosition(start, length, message, arg0) {
+            var lastError = ts.lastOrUndefined(sourceFile.parseDiagnostics);
+            if (!lastError || start !== lastError.start) {
+                sourceFile.parseDiagnostics.push(ts.createFileDiagnostic(sourceFile, start, length, message, arg0));
             }
-            if (lookAheadMode === 1 /* NoErrorYet */) {
-                lookAheadMode = 2 /* Error */;
-            }
+            parseErrorBeforeNextFinishedNode = true;
         }
         function scanError(message) {
             var pos = scanner.getTextPos();
             parseErrorAtPosition(pos, 0, message);
-        }
-        function onComment(pos, end) {
-            if (commentRanges)
-                commentRanges.push({ pos: pos, end: end });
         }
         function getNodePos() {
             return scanner.getStartPos();
@@ -3738,33 +3754,25 @@ var ts;
         function reScanTemplateToken() {
             return token = scanner.reScanTemplateToken();
         }
-        function lookAheadHelper(callback, alwaysResetState) {
+        function speculationHelper(callback, isLookAhead) {
             var saveToken = token;
-            var saveSyntacticErrorsLength = sourceFile.parseDiagnostics.length;
-            var saveLookAheadMode = lookAheadMode;
-            lookAheadMode = 1 /* NoErrorYet */;
-            var result = callback();
-            ts.Debug.assert(lookAheadMode === 2 /* Error */ || lookAheadMode === 1 /* NoErrorYet */);
-            if (lookAheadMode === 2 /* Error */) {
-                result = undefined;
-            }
-            lookAheadMode = saveLookAheadMode;
-            if (!result || alwaysResetState) {
+            var saveParseDiagnosticsLength = sourceFile.parseDiagnostics.length;
+            var saveParseErrorBeforeNextFinishedNode = parseErrorBeforeNextFinishedNode;
+            var saveContextFlags = contextFlags;
+            var result = isLookAhead ? scanner.lookAhead(callback) : scanner.tryScan(callback);
+            ts.Debug.assert(saveContextFlags === contextFlags);
+            if (!result || isLookAhead) {
                 token = saveToken;
-                sourceFile.parseDiagnostics.length = saveSyntacticErrorsLength;
+                sourceFile.parseDiagnostics.length = saveParseDiagnosticsLength;
+                parseErrorBeforeNextFinishedNode = saveParseErrorBeforeNextFinishedNode;
             }
             return result;
         }
         function lookAhead(callback) {
-            var result;
-            scanner.tryScan(function () {
-                result = lookAheadHelper(callback, true);
-                return false;
-            });
-            return result;
+            return speculationHelper(callback, true);
         }
         function tryParse(callback) {
-            return scanner.tryScan(function () { return lookAheadHelper(callback, false); });
+            return speculationHelper(callback, false);
         }
         function isIdentifier() {
             if (token === 63 /* Identifier */) {
@@ -3834,6 +3842,10 @@ var ts;
             if (contextFlags) {
                 node.parserContextFlags = contextFlags;
             }
+            if (parseErrorBeforeNextFinishedNode) {
+                parseErrorBeforeNextFinishedNode = false;
+                node.parserContextFlags |= 16 /* ContainsError */;
+            }
             return node;
         }
         function createMissingNode(kind, reportAtCurrentPosition, diagnosticMessage, arg0) {
@@ -3843,9 +3855,6 @@ var ts;
             else {
                 parseErrorAtCurrentToken(diagnosticMessage, arg0);
             }
-            return createMissingNodeWithoutError(kind);
-        }
-        function createMissingNodeWithoutError(kind) {
             var result = createNode(kind, scanner.getStartPos());
             result.text = "";
             return finishNode(result);
@@ -4178,7 +4187,7 @@ var ts;
             var node = createNode(132 /* TypeReference */);
             node.typeName = parseEntityName(false, ts.Diagnostics.Type_expected);
             if (!scanner.hasPrecedingLineBreak() && token === 23 /* LessThanToken */) {
-                node.typeArguments = parseTypeArguments();
+                node.typeArguments = parseBracketedList(15 /* TypeArguments */, parseType, 23 /* LessThanToken */, 24 /* GreaterThanToken */);
             }
             return finishNode(node);
         }
@@ -4237,10 +4246,10 @@ var ts;
         function parseParameterInitializer() {
             return parseInitializer(true);
         }
-        function fillSignature(returnToken, yieldAndGeneratorParameterContext, signature) {
+        function fillSignature(returnToken, yieldAndGeneratorParameterContext, requireCompleteParameterList, signature) {
             var returnTokenRequired = returnToken === 31 /* EqualsGreaterThanToken */;
             signature.typeParameters = parseTypeParameters();
-            signature.parameters = parseParameterList(yieldAndGeneratorParameterContext);
+            signature.parameters = parseParameterList(yieldAndGeneratorParameterContext, requireCompleteParameterList);
             if (returnTokenRequired) {
                 parseExpected(returnToken);
                 signature.type = parseType();
@@ -4249,26 +4258,28 @@ var ts;
                 signature.type = parseType();
             }
         }
-        function parseParameterList(yieldAndGeneratorParameterContext) {
+        function parseParameterList(yieldAndGeneratorParameterContext, requireCompleteParameterList) {
             if (parseExpected(15 /* OpenParenToken */)) {
                 var savedYieldContext = inYieldContext();
                 var savedGeneratorParameterContext = inGeneratorParameterContext();
                 setYieldContext(yieldAndGeneratorParameterContext);
                 setGeneratorParameterContext(yieldAndGeneratorParameterContext);
                 var result = parseDelimitedList(13 /* Parameters */, parseParameter);
-                parseExpected(16 /* CloseParenToken */);
                 setYieldContext(savedYieldContext);
                 setGeneratorParameterContext(savedGeneratorParameterContext);
+                if (!parseExpected(16 /* CloseParenToken */) && requireCompleteParameterList) {
+                    return undefined;
+                }
                 return result;
             }
-            return createMissingList();
+            return requireCompleteParameterList ? undefined : createMissingList();
         }
         function parseSignatureMember(kind) {
             var node = createNode(kind);
             if (kind === 130 /* ConstructSignature */) {
                 parseExpected(86 /* NewKeyword */);
             }
-            fillSignature(50 /* ColonToken */, false, node);
+            fillSignature(50 /* ColonToken */, false, false, node);
             parseSemicolon();
             return finishNode(node);
         }
@@ -4320,7 +4331,7 @@ var ts;
                 var method = createNode(125 /* Method */, fullStart);
                 method.name = name;
                 method.questionToken = questionToken;
-                fillSignature(50 /* ColonToken */, false, method);
+                fillSignature(50 /* ColonToken */, false, false, method);
                 parseSemicolon();
                 return finishNode(method);
             }
@@ -4404,7 +4415,7 @@ var ts;
             if (kind === 134 /* ConstructorType */) {
                 parseExpected(86 /* NewKeyword */);
             }
-            fillSignature(31 /* EqualsGreaterThanToken */, false, node);
+            fillSignature(31 /* EqualsGreaterThanToken */, false, false, node);
             return finishNode(node);
         }
         function parseKeywordAndNoDot() {
@@ -4707,7 +4718,10 @@ var ts;
         }
         function parseParenthesizedArrowFunctionExpressionHead(allowAmbiguity) {
             var node = createNode(151 /* ArrowFunction */);
-            fillSignature(50 /* ColonToken */, false, node);
+            fillSignature(50 /* ColonToken */, false, !allowAmbiguity, node);
+            if (!node.parameters) {
+                return undefined;
+            }
             if (!allowAmbiguity && token !== 31 /* EqualsGreaterThanToken */ && token !== 13 /* OpenBraceToken */) {
                 return undefined;
             }
@@ -4921,45 +4935,68 @@ var ts;
             while (true) {
                 expression = parseMemberExpressionRest(expression);
                 if (token === 23 /* LessThanToken */) {
-                    var typeArguments = tryParse(parseTypeArgumentsAndOpenParen);
+                    var typeArguments = tryParse(parseTypeArgumentsInExpression);
                     if (!typeArguments) {
                         return expression;
                     }
                     var callExpr = createNode(145 /* CallExpression */, expression.pos);
                     callExpr.expression = expression;
                     callExpr.typeArguments = typeArguments;
-                    callExpr.arguments = parseDelimitedList(10 /* ArgumentExpressions */, parseArgumentExpression);
-                    parseExpected(16 /* CloseParenToken */);
+                    callExpr.arguments = parseArgumentList();
                     expression = finishNode(callExpr);
                     continue;
                 }
-                if (token === 15 /* OpenParenToken */) {
+                else if (token === 15 /* OpenParenToken */) {
                     var callExpr = createNode(145 /* CallExpression */, expression.pos);
                     callExpr.expression = expression;
-                    parseExpected(15 /* OpenParenToken */);
-                    callExpr.arguments = parseDelimitedList(10 /* ArgumentExpressions */, parseArgumentExpression);
-                    parseExpected(16 /* CloseParenToken */);
+                    callExpr.arguments = parseArgumentList();
                     expression = finishNode(callExpr);
                     continue;
                 }
                 return expression;
             }
         }
-        function parseTypeArgumentsAndOpenParen() {
-            var result = parseTypeArguments();
+        function parseArgumentList() {
             parseExpected(15 /* OpenParenToken */);
+            var result = parseDelimitedList(10 /* ArgumentExpressions */, parseArgumentExpression);
+            parseExpected(16 /* CloseParenToken */);
             return result;
         }
-        function parseTypeArguments() {
-            return parseBracketedList(15 /* TypeArguments */, parseSingleTypeArgument, 23 /* LessThanToken */, 24 /* GreaterThanToken */);
-        }
-        function parseSingleTypeArgument() {
-            if (token === 22 /* CommaToken */) {
-                var result = createNode(132 /* TypeReference */);
-                result.typeName = createMissingNodeWithoutError(63 /* Identifier */);
-                return finishNode(result);
+        function parseTypeArgumentsInExpression() {
+            if (!parseOptional(23 /* LessThanToken */)) {
+                return undefined;
             }
-            return parseType();
+            var typeArguments = parseDelimitedList(15 /* TypeArguments */, parseType);
+            if (!parseExpected(24 /* GreaterThanToken */)) {
+                return undefined;
+            }
+            return typeArguments && canFollowTypeArgumentsInExpression() ? typeArguments : undefined;
+        }
+        function canFollowTypeArgumentsInExpression() {
+            switch (token) {
+                case 15 /* OpenParenToken */:
+                case 19 /* DotToken */:
+                case 16 /* CloseParenToken */:
+                case 18 /* CloseBracketToken */:
+                case 50 /* ColonToken */:
+                case 21 /* SemicolonToken */:
+                case 22 /* CommaToken */:
+                case 49 /* QuestionToken */:
+                case 27 /* EqualsEqualsToken */:
+                case 29 /* EqualsEqualsEqualsToken */:
+                case 28 /* ExclamationEqualsToken */:
+                case 30 /* ExclamationEqualsEqualsToken */:
+                case 47 /* AmpersandAmpersandToken */:
+                case 48 /* BarBarToken */:
+                case 44 /* CaretToken */:
+                case 42 /* AmpersandToken */:
+                case 43 /* BarToken */:
+                case 14 /* CloseBraceToken */:
+                case 1 /* EndOfFileToken */:
+                    return true;
+                default:
+                    return false;
+            }
         }
         function parsePrimaryExpression() {
             switch (token) {
@@ -5064,7 +5101,7 @@ var ts;
             parseExpected(81 /* FunctionKeyword */);
             node.asteriskToken = parseOptionalToken(34 /* AsteriskToken */);
             node.name = node.asteriskToken ? doInYieldContext(parseOptionalIdentifier) : parseOptionalIdentifier();
-            fillSignature(50 /* ColonToken */, !!node.asteriskToken, node);
+            fillSignature(50 /* ColonToken */, !!node.asteriskToken, false, node);
             node.body = parseFunctionBlock(!!node.asteriskToken, false);
             return finishNode(node);
         }
@@ -5075,12 +5112,9 @@ var ts;
             var node = createNode(146 /* NewExpression */);
             parseExpected(86 /* NewKeyword */);
             node.expression = parseMemberExpressionOrHigher();
-            if (token === 23 /* LessThanToken */) {
-                node.typeArguments = tryParse(parseTypeArgumentsAndOpenParen);
-            }
-            if (node.typeArguments || parseOptional(15 /* OpenParenToken */)) {
-                node.arguments = parseDelimitedList(10 /* ArgumentExpressions */, parseArgumentExpression);
-                parseExpected(16 /* CloseParenToken */);
+            node.typeArguments = tryParse(parseTypeArgumentsInExpression);
+            if (node.typeArguments || token === 15 /* OpenParenToken */) {
+                node.arguments = parseArgumentList();
             }
             return finishNode(node);
         }
@@ -5360,7 +5394,6 @@ var ts;
                 case 13 /* OpenBraceToken */:
                     return parseBlock(163 /* Block */, false, false);
                 case 96 /* VarKeyword */:
-                case 102 /* LetKeyword */:
                 case 68 /* ConstKeyword */:
                     return parseVariableStatement(scanner.getStartPos(), undefined);
                 case 81 /* FunctionKeyword */:
@@ -5393,6 +5426,10 @@ var ts;
                     return parseTryStatement();
                 case 70 /* DebuggerKeyword */:
                     return parseDebuggerStatement();
+                case 102 /* LetKeyword */:
+                    if (isLetDeclaration()) {
+                        return parseVariableStatement(scanner.getStartPos(), undefined);
+                    }
                 default:
                     return isLabel() ? parseLabeledStatement() : parseExpressionStatement();
             }
@@ -5444,7 +5481,7 @@ var ts;
             parseExpected(81 /* FunctionKeyword */);
             node.asteriskToken = parseOptionalToken(34 /* AsteriskToken */);
             node.name = parseIdentifier();
-            fillSignature(50 /* ColonToken */, !!node.asteriskToken, node);
+            fillSignature(50 /* ColonToken */, !!node.asteriskToken, false, node);
             node.body = parseFunctionBlockOrSemicolon(!!node.asteriskToken);
             return finishNode(node);
         }
@@ -5452,7 +5489,7 @@ var ts;
             var node = createNode(126 /* Constructor */, pos);
             setModifiers(node, modifiers);
             parseExpected(111 /* ConstructorKeyword */);
-            fillSignature(50 /* ColonToken */, false, node);
+            fillSignature(50 /* ColonToken */, false, false, node);
             node.body = parseFunctionBlockOrSemicolon(false);
             return finishNode(node);
         }
@@ -5462,7 +5499,7 @@ var ts;
             method.asteriskToken = asteriskToken;
             method.name = name;
             method.questionToken = questionToken;
-            fillSignature(50 /* ColonToken */, !!asteriskToken, method);
+            fillSignature(50 /* ColonToken */, !!asteriskToken, false, method);
             method.body = requireBlock ? parseFunctionBlock(!!asteriskToken, false) : parseFunctionBlockOrSemicolon(!!asteriskToken);
             return finishNode(method);
         }
@@ -5491,7 +5528,7 @@ var ts;
             var node = createNode(kind, fullStart);
             setModifiers(node, modifiers);
             node.name = parsePropertyName();
-            fillSignature(50 /* ColonToken */, false, node);
+            fillSignature(50 /* ColonToken */, false, false, node);
             node.body = parseFunctionBlockOrSemicolon(false);
             return finishNode(node);
         }
@@ -5718,13 +5755,17 @@ var ts;
             parseSemicolon();
             return finishNode(node);
         }
+        function isLetDeclaration() {
+            return inStrictModeContext() || lookAhead(nextTokenIsIdentifierOnSameLine);
+        }
         function isDeclarationStart() {
             switch (token) {
                 case 96 /* VarKeyword */:
-                case 102 /* LetKeyword */:
                 case 68 /* ConstKeyword */:
                 case 81 /* FunctionKeyword */:
                     return true;
+                case 102 /* LetKeyword */:
+                    return isLetDeclaration();
                 case 67 /* ClassKeyword */:
                 case 101 /* InterfaceKeyword */:
                 case 75 /* EnumKeyword */:
@@ -5807,13 +5848,19 @@ var ts;
             return isDeclarationStart() ? parseDeclaration() : parseStatement();
         }
         function processReferenceComments() {
+            var triviaScanner = ts.createScanner(languageVersion, false, sourceText);
             var referencedFiles = [];
             var amdDependencies = [];
             var amdModuleName;
-            commentRanges = [];
-            token = scanner.scan();
-            for (var i = 0; i < commentRanges.length; i++) {
-                var range = commentRanges[i];
+            while (true) {
+                var kind = triviaScanner.scan();
+                if (kind === 5 /* WhitespaceTrivia */ || kind === 4 /* NewLineTrivia */ || kind === 3 /* MultiLineCommentTrivia */) {
+                    continue;
+                }
+                if (kind !== 2 /* SingleLineCommentTrivia */) {
+                    break;
+                }
+                var range = { pos: triviaScanner.getTokenPos(), end: triviaScanner.getTextPos() };
                 var comment = sourceText.substring(range.pos, range.end);
                 var referencePathMatchResult = getFileReferenceFromReferencePath(comment, range);
                 if (referencePathMatchResult) {
@@ -5843,7 +5890,6 @@ var ts;
                     }
                 }
             }
-            commentRanges = undefined;
             return {
                 referencedFiles: referencedFiles,
                 amdDependencies: amdDependencies,
@@ -5867,7 +5913,6 @@ var ts;
             ts.Debug.assert(syntacticDiagnostics !== undefined);
             return syntacticDiagnostics;
         }
-        scanner = ts.createScanner(languageVersion, true, sourceText, scanError, onComment);
         var rootNodeFlags = 0;
         if (ts.fileExtensionIs(filename, ".d.ts")) {
             rootNodeFlags = 1024 /* DeclarationFile */;
@@ -5887,6 +5932,8 @@ var ts;
         sourceFile.referencedFiles = referenceComments.referencedFiles;
         sourceFile.amdDependencies = referenceComments.amdDependencies;
         sourceFile.amdModuleName = referenceComments.amdModuleName;
+        var scanner = ts.createScanner(languageVersion, true, sourceText, scanError);
+        nextToken();
         sourceFile.statements = parseList(0 /* SourceElements */, true, parseSourceElement);
         ts.Debug.assert(token === 1 /* EndOfFileToken */);
         sourceFile.endOfFileToken = parseTokenNode();
@@ -6159,7 +6206,7 @@ var ts;
             return checkForDisallowedTrailingComma(arguments) || checkForOmittedArgument(arguments);
         }
         function checkTypeArguments(typeArguments) {
-            return checkForDisallowedTrailingComma(typeArguments) || checkForAtLeastOneTypeArgument(typeArguments) || checkForMissingTypeArgument(typeArguments);
+            return checkForDisallowedTrailingComma(typeArguments) || checkForAtLeastOneTypeArgument(typeArguments);
         }
         function checkForOmittedArgument(arguments) {
             if (arguments) {
@@ -6167,16 +6214,6 @@ var ts;
                     var arg = arguments[i];
                     if (arg.kind === 161 /* OmittedExpression */) {
                         return grammarErrorAtPos(arg.pos, 0, ts.Diagnostics.Argument_expression_expected);
-                    }
-                }
-            }
-        }
-        function checkForMissingTypeArgument(typeArguments) {
-            if (typeArguments) {
-                for (var i = 0, n = typeArguments.length; i < n; i++) {
-                    var arg = typeArguments[i];
-                    if (arg.kind === 132 /* TypeReference */ && getFullWidth(arg.typeName) === 0) {
-                        return grammarErrorAtPos(arg.pos, 0, ts.Diagnostics.Type_expected);
                     }
                 }
             }
@@ -10776,8 +10813,7 @@ var ts;
             getDiagnostics: getDiagnostics,
             getDeclarationDiagnostics: getDeclarationDiagnostics,
             getGlobalDiagnostics: getGlobalDiagnostics,
-            getParentOfSymbol: getParentOfSymbol,
-            getNarrowedTypeOfSymbol: getNarrowedTypeOfSymbol,
+            getTypeOfSymbolAtLocation: getTypeOfSymbolAtLocation,
             getDeclaredTypeOfSymbol: getDeclaredTypeOfSymbol,
             getPropertiesOfType: getPropertiesOfType,
             getPropertyOfType: getPropertyOfType,
@@ -10785,9 +10821,9 @@ var ts;
             getIndexTypeOfType: getIndexTypeOfType,
             getReturnTypeOfSignature: getReturnTypeOfSignature,
             getSymbolsInScope: getSymbolsInScope,
-            getSymbolInfo: getSymbolInfo,
+            getSymbolAtLocation: getSymbolAtLocation,
             getShorthandAssignmentValueSymbol: getShorthandAssignmentValueSymbol,
-            getTypeOfNode: getTypeOfNode,
+            getTypeAtLocation: getTypeAtLocation,
             typeToString: typeToString,
             getSymbolDisplayBuilder: getSymbolDisplayBuilder,
             symbolToString: symbolToString,
@@ -11543,9 +11579,6 @@ var ts;
         }
         function writePunctuation(writer, kind) {
             writer.writePunctuation(ts.tokenToString(kind));
-        }
-        function writeOperator(writer, kind) {
-            writer.writeOperator(ts.tokenToString(kind));
         }
         function writeSpace(writer) {
             writer.writeSpace(" ");
@@ -14437,6 +14470,29 @@ var ts;
                 return false;
             }
         }
+        function resolveLocation(node) {
+            var containerNodes = [];
+            for (var parent = node.parent; parent; parent = parent.parent) {
+                if ((ts.isExpression(parent) || ts.isObjectLiteralMethod(node)) && isContextSensitive(parent)) {
+                    containerNodes.unshift(parent);
+                }
+            }
+            ts.forEach(containerNodes, function (node) {
+                getTypeOfNode(node);
+            });
+        }
+        function getSymbolAtLocation(node) {
+            resolveLocation(node);
+            return getSymbolInfo(node);
+        }
+        function getTypeAtLocation(node) {
+            resolveLocation(node);
+            return getTypeOfNode(node);
+        }
+        function getTypeOfSymbolAtLocation(symbol, node) {
+            resolveLocation(node);
+            return getNarrowedTypeOfSymbol(symbol, node);
+        }
         function getNarrowedTypeOfSymbol(symbol, node) {
             var type = getTypeOfSymbol(symbol);
             if (node && (symbol.flags & 3 /* Variable */ && type.flags & 65025 /* Structured */)) {
@@ -16883,7 +16939,9 @@ var ts;
             checkSourceElement(node.statement);
         }
         function checkThrowStatement(node) {
-            checkExpression(node.expression);
+            if (node.expression) {
+                checkExpression(node.expression);
+            }
         }
         function checkTryStatement(node) {
             checkBlock(node.tryBlock);
@@ -17639,21 +17697,6 @@ var ts;
         }
         function getGlobalDiagnostics() {
             return ts.filter(getSortedDiagnostics(), function (d) { return !d.file; });
-        }
-        function getNodeAtPosition(sourceFile, position) {
-            function findChildAtPosition(parent) {
-                var child = ts.forEachChild(parent, function (node) {
-                    if (position >= node.pos && position <= node.end && position >= ts.getTokenPosOfNode(node)) {
-                        return findChildAtPosition(node);
-                    }
-                });
-                return child || parent;
-            }
-            if (position < sourceFile.pos)
-                position = sourceFile.pos;
-            if (position > sourceFile.end)
-                position = sourceFile.end;
-            return findChildAtPosition(sourceFile);
         }
         function isInsideWithStatementBody(node) {
             if (node) {
