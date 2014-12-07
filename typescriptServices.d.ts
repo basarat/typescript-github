@@ -4415,6 +4415,7 @@ declare module ts {
         static interfaceName: string;
         static moduleName: string;
         static typeParameterName: string;
+        static typeAlias: string;
     }
     function displayPartsToString(displayParts: SymbolDisplayPart[]): string;
     interface DisplayPartsSymbolWriter extends SymbolWriter {
