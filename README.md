@@ -45,7 +45,7 @@ rm -rf ./built
 ./node_modules/.bin/jake local --trace
 
 # Copy output
-cp ./built/local/lib.core.d.ts ./built/local/lib.core.es6.d.ts ./built/local/lib.d.ts ./built/local/lib.dom.d.ts ./built/local/lib.es6.d.ts ./built/local/lib.webworker.d.ts ./built/local/tsc.js ./built/local/typescriptServices.d.ts ./built/local/typescriptServices.js ./bin/tsc $typeScriptGithubDirectory
+cp ./built/local/lib.core.d.ts ./built/local/lib.core.es6.d.ts ./built/local/lib.d.ts ./built/local/lib.dom.d.ts ./built/local/lib.es6.d.ts ./built/local/lib.webworker.d.ts ./built/local/tsc.js ./built/local/typescript.d.ts ./built/local/typescriptServices.d.ts ./built/local/typescriptServices.js ./bin/tsc $typeScriptGithubDirectory
 
 # Manual verification here
 # ...
