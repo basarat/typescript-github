@@ -13,7 +13,7 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-declare module ts {
+declare module "typescript" {
     interface Map<T> {
         [index: string]: T;
     }
@@ -1300,7 +1300,7 @@ declare module ts {
         getNewLine(): string;
     }
 }
-declare module ts {
+declare module "typescript" {
     interface ErrorCallback {
         (message: DiagnosticMessage): void;
     }
@@ -1348,7 +1348,7 @@ declare module ts {
     function isIdentifierPart(ch: number, languageVersion: ScriptTarget): boolean;
     function createScanner(languageVersion: ScriptTarget, skipTrivia: boolean, text?: string, onError?: ErrorCallback): Scanner;
 }
-declare module ts {
+declare module "typescript" {
     function getNodeConstructor(kind: SyntaxKind): new () => Node;
     function createNode(kind: SyntaxKind): Node;
     function forEachChild<T>(node: Node, cbNode: (node: Node) => T, cbNodes?: (nodes: Node[]) => T): T;
@@ -1356,10 +1356,10 @@ declare module ts {
     function createSourceFile(filename: string, sourceText: string, languageVersion: ScriptTarget, setParentNodes?: boolean): SourceFile;
     function createProgram(rootNames: string[], options: CompilerOptions, host: CompilerHost): Program;
 }
-declare module ts {
+declare module "typescript" {
     function createTypeChecker(program: Program, fullTypeCheck: boolean): TypeChecker;
 }
-declare module ts {
+declare module "typescript" {
     var servicesVersion: string;
     interface Node {
         getSourceFile(): SourceFile;
