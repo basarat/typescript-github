@@ -281,8 +281,10 @@ declare module ts {
         DisallowIn = 2,
         Yield = 4,
         GeneratorParameter = 8,
-        ContainsError = 16,
-        HasPropagatedChildContainsErrorFlag = 32,
+        ThisNodeHasError = 16,
+        ParserGeneratedFlags = 31,
+        ThisNodeOrAnySubNodesHasError = 32,
+        HasAggregatedChildData = 64,
     }
     interface Node extends TextRange {
         kind: SyntaxKind;
@@ -962,6 +964,8 @@ declare module ts {
         isVisible?: boolean;
         localModuleName?: string;
         assignmentChecks?: Map<boolean>;
+        hasReportedStatementInAmbientContext?: boolean;
+        importOnRightSide?: Symbol;
     }
     const enum TypeFlags {
         Any = 1,
@@ -1353,7 +1357,11 @@ declare module ts {
     function createNode(kind: SyntaxKind): Node;
     function forEachChild<T>(node: Node, cbNode: (node: Node) => T, cbNodes?: (nodes: Node[]) => T): T;
     function createCompilerHost(options: CompilerOptions): CompilerHost;
+    function modifierToFlag(token: SyntaxKind): NodeFlags;
+    function isEvalOrArgumentsIdentifier(node: Node): boolean;
     function createSourceFile(filename: string, sourceText: string, languageVersion: ScriptTarget, setParentNodes?: boolean): SourceFile;
+    function isLeftHandSideExpression(expr: Expression): boolean;
+    function isAssignmentOperator(token: SyntaxKind): boolean;
     function createProgram(rootNames: string[], options: CompilerOptions, host: CompilerHost): Program;
 }
 declare module ts {
