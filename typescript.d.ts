@@ -189,29 +189,29 @@ declare module "typescript" {
         ConditionalExpression = 164,
         TemplateExpression = 165,
         YieldExpression = 166,
-        OmittedExpression = 167,
-        TemplateSpan = 168,
-        Block = 169,
-        VariableStatement = 170,
-        EmptyStatement = 171,
-        ExpressionStatement = 172,
-        IfStatement = 173,
-        DoStatement = 174,
-        WhileStatement = 175,
-        ForStatement = 176,
-        ForInStatement = 177,
-        ContinueStatement = 178,
-        BreakStatement = 179,
-        ReturnStatement = 180,
-        WithStatement = 181,
-        SwitchStatement = 182,
-        LabeledStatement = 183,
-        ThrowStatement = 184,
-        TryStatement = 185,
-        TryBlock = 186,
-        FinallyBlock = 187,
-        DebuggerStatement = 188,
-        VariableDeclaration = 189,
+        SpreadElementExpression = 167,
+        OmittedExpression = 168,
+        TemplateSpan = 169,
+        Block = 170,
+        VariableStatement = 171,
+        EmptyStatement = 172,
+        ExpressionStatement = 173,
+        IfStatement = 174,
+        DoStatement = 175,
+        WhileStatement = 176,
+        ForStatement = 177,
+        ForInStatement = 178,
+        ContinueStatement = 179,
+        BreakStatement = 180,
+        ReturnStatement = 181,
+        WithStatement = 182,
+        SwitchStatement = 183,
+        LabeledStatement = 184,
+        ThrowStatement = 185,
+        TryStatement = 186,
+        DebuggerStatement = 187,
+        VariableDeclaration = 188,
+        VariableDeclarationList = 189,
         FunctionDeclaration = 190,
         ClassDeclaration = 191,
         InterfaceDeclaration = 192,
@@ -331,9 +331,13 @@ declare module "typescript" {
         type?: TypeNode;
     }
     interface VariableDeclaration extends Declaration {
+        parent?: VariableDeclarationList;
         name: Identifier | BindingPattern;
         type?: TypeNode;
         initializer?: Expression;
+    }
+    interface VariableDeclarationList extends Node {
+        declarations: NodeArray<VariableDeclaration>;
     }
     interface ParameterDeclaration extends Declaration {
         dotDotDotToken?: Node;
@@ -514,6 +518,9 @@ declare module "typescript" {
     interface ArrayLiteralExpression extends PrimaryExpression {
         elements: NodeArray<Expression>;
     }
+    interface SpreadElementExpression extends Expression {
+        expression: Expression;
+    }
     interface ObjectLiteralExpression extends PrimaryExpression, Declaration {
         properties: NodeArray<ObjectLiteralElement>;
     }
@@ -548,7 +555,7 @@ declare module "typescript" {
         statements: NodeArray<Statement>;
     }
     interface VariableStatement extends Statement {
-        declarations: NodeArray<VariableDeclaration>;
+        declarationList: VariableDeclarationList;
     }
     interface ExpressionStatement extends Statement {
         expression: Expression;
@@ -568,14 +575,12 @@ declare module "typescript" {
         expression: Expression;
     }
     interface ForStatement extends IterationStatement {
-        declarations?: NodeArray<VariableDeclaration>;
-        initializer?: Expression;
+        initializer?: VariableDeclarationList | Expression;
         condition?: Expression;
         iterator?: Expression;
     }
     interface ForInStatement extends IterationStatement {
-        declarations?: NodeArray<VariableDeclaration>;
-        variable?: Expression;
+        initializer: VariableDeclarationList | Expression;
         expression: Expression;
     }
     interface BreakOrContinueStatement extends Statement {
@@ -682,12 +687,12 @@ declare module "typescript" {
         getLineAndCharacterFromPosition(position: number): LineAndCharacter;
         getPositionFromLineAndCharacter(line: number, character: number): number;
         getLineStarts(): number[];
+        update(newText: string, textChangeRange: TextChangeRange): SourceFile;
         amdDependencies: string[];
         amdModuleName: string;
         referencedFiles: FileReference[];
         referenceDiagnostics: Diagnostic[];
         parseDiagnostics: Diagnostic[];
-        grammarDiagnostics: Diagnostic[];
         getSyntacticDiagnostics(): Diagnostic[];
         semanticDiagnostics: Diagnostic[];
         hasNoDefaultLib: boolean;
@@ -1119,6 +1124,7 @@ declare module "typescript" {
         locale?: string;
         mapRoot?: string;
         module?: ModuleKind;
+        noEmit?: boolean;
         noEmitOnError?: boolean;
         noErrorTruncation?: boolean;
         noImplicitAny?: boolean;
@@ -1303,10 +1309,18 @@ declare module "typescript" {
         useCaseSensitiveFileNames(): boolean;
         getNewLine(): string;
     }
+    interface TextSpan {
+        start: number;
+        length: number;
+    }
+    interface TextChangeRange {
+        span: TextSpan;
+        newLength: number;
+    }
 }
 declare module "typescript" {
     interface ErrorCallback {
-        (message: DiagnosticMessage): void;
+        (message: DiagnosticMessage, length: number): void;
     }
     interface CommentCallback {
         (pos: number, end: number): void;
@@ -1412,9 +1426,8 @@ declare module "typescript" {
     interface SourceFile {
         isOpen: boolean;
         version: string;
-        getScriptSnapshot(): IScriptSnapshot;
+        scriptSnapshot: IScriptSnapshot;
         getNamedDeclarations(): Declaration[];
-        update(scriptSnapshot: IScriptSnapshot, version: string, isOpen: boolean, textChangeRange: TextChangeRange): SourceFile;
     }
     /**
      * Represents an immutable snapshot of a script at a specified time.Once acquired, the
@@ -1495,96 +1508,6 @@ declare module "typescript" {
         getEmitOutput(fileName: string): EmitOutput;
         getSourceFile(filename: string): SourceFile;
         dispose(): void;
-    }
-    class TextSpan {
-        private _start;
-        private _length;
-        /**
-            * Creates a TextSpan instance beginning with the position Start and having the Length
-            * specified with length.
-            */
-        constructor(start: number, length: number);
-        toJSON(key: any): any;
-        start(): number;
-        length(): number;
-        end(): number;
-        isEmpty(): boolean;
-        /**
-            * Determines whether the position lies within the span. Returns true if the position is greater than or equal to Start and strictly less
-            * than End, otherwise false.
-            * @param position The position to check.
-            */
-        containsPosition(position: number): boolean;
-        /**
-            * Determines whether span falls completely within this span. Returns true if the specified span falls completely within this span, otherwise false.
-            * @param span The span to check.
-            */
-        containsTextSpan(span: TextSpan): boolean;
-        /**
-            * Determines whether the given span overlaps this span. Two spans are considered to overlap
-            * if they have positions in common and neither is empty. Empty spans do not overlap with any
-            * other span. Returns true if the spans overlap, false otherwise.
-            * @param span The span to check.
-            */
-        overlapsWith(span: TextSpan): boolean;
-        /**
-            * Returns the overlap with the given span, or undefined if there is no overlap.
-            * @param span The span to check.
-            */
-        overlap(span: TextSpan): TextSpan;
-        /**
-            * Determines whether span intersects this span. Two spans are considered to
-            * intersect if they have positions in common or the end of one span
-            * coincides with the start of the other span. Returns true if the spans intersect, false otherwise.
-            * @param The span to check.
-            */
-        intersectsWithTextSpan(span: TextSpan): boolean;
-        intersectsWith(start: number, length: number): boolean;
-        /**
-            * Determines whether the given position intersects this span.
-            * A position is considered to intersect if it is between the start and
-            * end positions (inclusive) of this span. Returns true if the position intersects, false otherwise.
-            * @param position The position to check.
-            */
-        intersectsWithPosition(position: number): boolean;
-        /**
-            * Returns the intersection with the given span, or undefined if there is no intersection.
-            * @param span The span to check.
-            */
-        intersection(span: TextSpan): TextSpan;
-        /**
-            * Creates a new TextSpan from the given start and end positions
-            * as opposed to a position and length.
-            */
-        static fromBounds(start: number, end: number): TextSpan;
-    }
-    class TextChangeRange {
-        static unchanged: TextChangeRange;
-        private _span;
-        private _newLength;
-        /**
-            * Initializes a new instance of TextChangeRange.
-            */
-        constructor(span: TextSpan, newLength: number);
-        /**
-            * The span of text before the edit which is being changed
-            */
-        span(): TextSpan;
-        /**
-            * Width of the span after the edit.  A 0 here would represent a delete
-            */
-        newLength(): number;
-        newSpan(): TextSpan;
-        isUnchanged(): boolean;
-        /**
-            * Called to merge all the changes that occurred across several versions of a script snapshot
-            * into a single change.  i.e. if a user keeps making successive edits to a script we will
-            * have a text change from V1 to V2, V2 to V3, ..., Vn.
-            *
-            * This function will then merge those changes into a single change range valid between V1 and
-            * Vn.
-            */
-        static collapseChangesAcrossMultipleVersions(changes: TextChangeRange[]): TextChangeRange;
     }
     interface ClassifiedSpan {
         textSpan: TextSpan;
@@ -1877,6 +1800,8 @@ declare module "typescript" {
         throwIfCancellationRequested(): void;
     }
     function createLanguageServiceSourceFile(filename: string, scriptSnapshot: IScriptSnapshot, scriptTarget: ScriptTarget, version: string, isOpen: boolean, setNodeParents: boolean): SourceFile;
+    var disableIncrementalParsing: boolean;
+    function updateLanguageServiceSourceFile(sourceFile: SourceFile, scriptSnapshot: IScriptSnapshot, version: string, isOpen: boolean, textChangeRange: TextChangeRange): SourceFile;
     function createDocumentRegistry(): DocumentRegistry;
     function preProcessFile(sourceText: string, readImportFiles?: boolean): PreProcessedFileInfo;
     function createLanguageService(host: LanguageServiceHost, documentRegistry: DocumentRegistry): LanguageService;
