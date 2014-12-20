@@ -230,9 +230,8 @@ declare module ts {
         ShorthandPropertyAssignment = 205,
         EnumMember = 206,
         SourceFile = 207,
-        Program = 208,
-        SyntaxList = 209,
-        Count = 210,
+        SyntaxList = 208,
+        Count = 209,
         FirstAssignment = 52,
         LastAssignment = 63,
         FirstReservedWord = 65,
@@ -703,15 +702,21 @@ declare module ts {
         languageVersion: ScriptTarget;
         identifiers: Map<string>;
     }
-    interface Program {
-        getSourceFile(filename: string): SourceFile;
-        getSourceFiles(): SourceFile[];
+    interface ScriptReferenceHost {
         getCompilerOptions(): CompilerOptions;
+        getSourceFile(filename: string): SourceFile;
+        getCurrentDirectory(): string;
+    }
+    interface Program extends ScriptReferenceHost {
+        getSourceFiles(): SourceFile[];
         getCompilerHost(): CompilerHost;
         getDiagnostics(sourceFile?: SourceFile): Diagnostic[];
         getGlobalDiagnostics(): Diagnostic[];
-        getTypeChecker(fullTypeCheckMode: boolean): TypeChecker;
+        getDeclarationDiagnostics(sourceFile: SourceFile): Diagnostic[];
+        getTypeChecker(produceDiagnostics: boolean): TypeChecker;
         getCommonSourceDirectory(): string;
+        emitFiles(targetSourceFile?: SourceFile): EmitResult;
+        isEmitBlocked(sourceFile?: SourceFile): boolean;
     }
     interface SourceMapSpan {
         emittedLine: number;
@@ -745,16 +750,20 @@ declare module ts {
         diagnostics: Diagnostic[];
         sourceMaps: SourceMapData[];
     }
+    interface TypeCheckerHost {
+        getCompilerOptions(): CompilerOptions;
+        getCompilerHost(): CompilerHost;
+        getSourceFiles(): SourceFile[];
+        getSourceFile(filename: string): SourceFile;
+    }
     interface TypeChecker {
-        getProgram(): Program;
+        getEmitResolver(): EmitResolver;
         getDiagnostics(sourceFile?: SourceFile): Diagnostic[];
-        getDeclarationDiagnostics(sourceFile: SourceFile): Diagnostic[];
         getGlobalDiagnostics(): Diagnostic[];
         getNodeCount(): number;
         getIdentifierCount(): number;
         getSymbolCount(): number;
         getTypeCount(): number;
-        emitFiles(targetSourceFile?: SourceFile): EmitResult;
         getTypeOfSymbolAtLocation(symbol: Symbol, node: Node): Type;
         getDeclaredTypeOfSymbol(symbol: Symbol): Type;
         getPropertiesOfType(type: Type): Symbol[];
@@ -778,7 +787,6 @@ declare module ts {
         isImplementationOfOverload(node: FunctionLikeDeclaration): boolean;
         isUndefinedSymbol(symbol: Symbol): boolean;
         isArgumentsSymbol(symbol: Symbol): boolean;
-        isEmitBlocked(sourceFile?: SourceFile): boolean;
         getEnumMemberValue(node: EnumMember): number;
         isValidPropertyAccess(node: PropertyAccessExpression | QualifiedName, propertyName: string): boolean;
         getAliasedSymbol(symbol: Symbol): Symbol;
@@ -838,7 +846,6 @@ declare module ts {
         errorModuleName?: string;
     }
     interface EmitResolver {
-        getProgram(): Program;
         getLocalNameOfContainer(container: ModuleDeclaration | EnumDeclaration): string;
         getExpressionNamePrefix(node: Identifier): string;
         getExportAssignmentName(node: SourceFile): string;
@@ -854,7 +861,6 @@ declare module ts {
         isSymbolAccessible(symbol: Symbol, enclosingDeclaration: Node, meaning: SymbolFlags): SymbolAccessiblityResult;
         isEntityNameVisible(entityName: EntityName, enclosingDeclaration: Node): SymbolVisibilityResult;
         getConstantValue(node: PropertyAccessExpression | ElementAccessExpression): number;
-        isEmitBlocked(sourceFile?: SourceFile): boolean;
         isUnknownIdentifier(location: Node, name: string): boolean;
     }
     const enum SymbolFlags {
@@ -1370,16 +1376,18 @@ declare module ts {
     function getNodeConstructor(kind: SyntaxKind): new () => Node;
     function createNode(kind: SyntaxKind): Node;
     function forEachChild<T>(node: Node, cbNode: (node: Node) => T, cbNodes?: (nodes: Node[]) => T): T;
-    function createCompilerHost(options: CompilerOptions): CompilerHost;
     function modifierToFlag(token: SyntaxKind): NodeFlags;
     function isEvalOrArgumentsIdentifier(node: Node): boolean;
     function createSourceFile(filename: string, sourceText: string, languageVersion: ScriptTarget, setParentNodes?: boolean): SourceFile;
     function isLeftHandSideExpression(expr: Expression): boolean;
     function isAssignmentOperator(token: SyntaxKind): boolean;
-    function createProgram(rootNames: string[], options: CompilerOptions, host: CompilerHost): Program;
 }
 declare module ts {
-    function createTypeChecker(program: Program, fullTypeCheck: boolean): TypeChecker;
+    function createTypeChecker(host: TypeCheckerHost, produceDiagnostics: boolean): TypeChecker;
+}
+declare module ts {
+    function createCompilerHost(options: CompilerOptions): CompilerHost;
+    function createProgram(rootNames: string[], options: CompilerOptions, host: CompilerHost): Program;
 }
 declare module ts {
     var servicesVersion: string;
