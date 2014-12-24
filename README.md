@@ -9,7 +9,7 @@ This is meant to be used as pre-release builds if you want to try the compiler /
 npm install https://github.com/Arnavion/typescript-github/tarball/<release name>
 ```
 
-Each release is named after the day it was built and the git commit hash in Microsoft/TypeScript/master that it was built from.
+Each release is named after the day it was built and the git commit hash in Microsoft/TypeScript/release-1.4 that it was built from.
 
 
 ### Build
@@ -29,7 +29,7 @@ cd $typeScriptDirectory
 
 git clean -xfd
 git fetch origin
-git reset --hard origin/master
+git reset --hard origin/release-1.4
 
 commitHash=`git rev-parse HEAD`
 
@@ -37,12 +37,11 @@ commitHash=`git rev-parse HEAD`
 npm install jake
 
 # Build once with LKG
-./node_modules/.bin/jake generate-diagnostics lib built/local/tsc.js --trace
-cp ./built/local/tsc.js ./bin/tsc.js
+./node_modules/.bin/jake release generate-diagnostics lib built/local/tsc.js --trace
+cp ./built/local/* ./bin/
 
 # Rebuild with itself
-rm -rf ./built
-./node_modules/.bin/jake local --trace
+./node_modules/.bin/jake release clean local --trace
 
 # Copy output
 cp ./built/local/lib.core.d.ts ./built/local/lib.core.es6.d.ts ./built/local/lib.d.ts ./built/local/lib.dom.d.ts ./built/local/lib.es6.d.ts ./built/local/lib.webworker.d.ts ./built/local/tsc.js ./built/local/typescript.d.ts ./built/local/typescriptServices.d.ts ./built/local/typescriptServices.js ./bin/tsc $typeScriptGithubDirectory
