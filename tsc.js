@@ -11583,7 +11583,6 @@ var ts;
                     case 131 /* IndexSignature */:
                     case 123 /* Parameter */:
                     case 190 /* ModuleBlock */:
-                    case 122 /* TypeParameter */:
                     case 133 /* FunctionType */:
                     case 134 /* ConstructorType */:
                     case 136 /* TypeLiteral */:
@@ -11593,6 +11592,7 @@ var ts;
                     case 139 /* UnionType */:
                     case 140 /* ParenthesizedType */:
                         return isDeclarationVisible(node.parent);
+                    case 122 /* TypeParameter */:
                     case 201 /* SourceFile */:
                         return true;
                     default:
