@@ -24443,7 +24443,9 @@ var ts;
                 getCancellationToken: function () { return cancellationToken; },
                 getCanonicalFileName: function (filename) { return useCaseSensitivefilenames ? filename : filename.toLowerCase(); },
                 useCaseSensitiveFileNames: function () { return useCaseSensitivefilenames; },
-                getNewLine: function () { return "\r\n"; },
+                getNewLine: function () {
+                    return host.getNewLine ? host.getNewLine() : "\r\n";
+                },
                 getDefaultLibFilename: function (options) {
                     return host.getDefaultLibFilename(options);
                 },

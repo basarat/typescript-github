@@ -1470,6 +1470,7 @@ declare module ts {
     }
     interface LanguageServiceHost extends Logger {
         getCompilationSettings(): CompilerOptions;
+        getNewLine?(): string;
         getScriptFileNames(): string[];
         getScriptVersion(fileName: string): string;
         getScriptIsOpen(fileName: string): boolean;
