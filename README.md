@@ -23,7 +23,7 @@ set -e
 typeScriptDirectory='/stuff/src/typescript/'
 
 # Arnavion/typescript-github clone
-typeScriptGithubDirectory='/stuff/src/typescript-github/'
+typeScriptGithubDirectory='/stuff/src/typescript-github/bin/'
 
 cd $typeScriptDirectory
 

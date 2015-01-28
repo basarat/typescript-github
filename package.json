@@ -2,7 +2,7 @@
 	"name": "typescript-github",
 	"version": "0.1.0",
 	"description": "Somewhat regularly-built snapshots of https://github.com/Microsoft/TypeScript",
-	"keywords": ["typescript"],
+	"keywords": ["TypeScript"],
 	"homepage": "https://github.com/Arnavion/typescript-github",
 	"licenses": [{
 		"type": "Apache-2.0",
@@ -15,5 +15,12 @@
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Arnavion/typescript-github"
+	},
+	"main": "./bin/typescriptServices.js",
+	"bin": {
+		"tsc": "./bin/tsc"
+	},
+	"engines": {
+		"node": ">=0.8.0"
 	}
 }
