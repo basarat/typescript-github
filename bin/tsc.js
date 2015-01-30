@@ -9670,6 +9670,10 @@ var ts;
                 error(errorNode, ts.Diagnostics.Excessive_stack_depth_comparing_types_0_and_1, typeToString(source), typeToString(target));
             }
             else if (errorInfo) {
+                if (errorInfo.next === undefined) {
+                    errorInfo = undefined;
+                    isRelatedTo(source, target, errorNode !== undefined, headMessage, true);
+                }
                 if (containingMessageChain) {
                     errorInfo = ts.concatenateDiagnosticMessageChains(containingMessageChain, errorInfo);
                 }
@@ -9679,7 +9683,8 @@ var ts;
             function reportError(message, arg0, arg1, arg2) {
                 errorInfo = ts.chainDiagnosticMessages(errorInfo, message, arg0, arg1, arg2);
             }
-            function isRelatedTo(source, target, reportErrors, headMessage) {
+            function isRelatedTo(source, target, reportErrors, headMessage, elaborateErrors) {
+                if (elaborateErrors === void 0) { elaborateErrors = false; }
                 var result;
                 if (source === target)
                     return -1 /* True */;
@@ -9748,7 +9753,7 @@ var ts;
                     }
                     var reportStructuralErrors = reportErrors && errorInfo === saveErrorInfo;
                     var sourceOrApparentType = relation === identityRelation ? source : getApparentType(source);
-                    if (sourceOrApparentType.flags & 48128 /* ObjectType */ && target.flags & 48128 /* ObjectType */ && (result = objectTypeRelatedTo(sourceOrApparentType, target, reportStructuralErrors))) {
+                    if (sourceOrApparentType.flags & 48128 /* ObjectType */ && target.flags & 48128 /* ObjectType */ && (result = objectTypeRelatedTo(sourceOrApparentType, target, reportStructuralErrors, elaborateErrors))) {
                         errorInfo = saveErrorInfo;
                         return result;
                     }
@@ -9829,14 +9834,17 @@ var ts;
                     return 0 /* False */;
                 }
             }
-            function objectTypeRelatedTo(source, target, reportErrors) {
+            function objectTypeRelatedTo(source, target, reportErrors, elaborateErrors) {
+                if (elaborateErrors === void 0) { elaborateErrors = false; }
                 if (overflow) {
                     return 0 /* False */;
                 }
                 var id = relation !== identityRelation || source.id < target.id ? source.id + "," + target.id : target.id + "," + source.id;
                 var related = relation[id];
                 if (related !== undefined) {
-                    return related ? -1 /* True */ : 0 /* False */;
+                    if (!elaborateErrors || (related === 3 /* FailedAndReported */)) {
+                        return related === 1 /* Succeeded */ ? -1 /* True */ : 0 /* False */;
+                    }
                 }
                 if (depth > 0) {
                     for (var i = 0; i < depth; i++) {
@@ -9858,7 +9866,7 @@ var ts;
                 sourceStack[depth] = source;
                 targetStack[depth] = target;
                 maybeStack[depth] = {};
-                maybeStack[depth][id] = true;
+                maybeStack[depth][id] = 1 /* Succeeded */;
                 depth++;
                 var saveExpandingFlags = expandingFlags;
                 if (!(expandingFlags & 1) && isDeeplyNestedGeneric(source, sourceStack))
@@ -9887,11 +9895,11 @@ var ts;
                 depth--;
                 if (result) {
                     var maybeCache = maybeStack[depth];
-                    var destinationCache = result === -1 /* True */ || depth === 0 ? relation : maybeStack[depth - 1];
+                    var destinationCache = (result === -1 /* True */ || depth === 0) ? relation : maybeStack[depth - 1];
                     ts.copyMap(maybeCache, destinationCache);
                 }
                 else {
-                    relation[id] = false;
+                    relation[id] = reportErrors ? 3 /* FailedAndReported */ : 2 /* Failed */;
                 }
                 return result;
             }
