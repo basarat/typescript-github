@@ -9,6 +9,14 @@ This is meant to be used as pre-release builds if you want to try the compiler /
 npm install https://github.com/Arnavion/typescript-github/tarball/<release name>
 ```
 
+or in your package.json
+
+```javascript
+    "dependencies": {
+        "typescript": "https://github.com/Arnavion/typescript-github/tarball/<release name>"
+    }
+```
+
 Each release is named after the day it was built and the git commit hash in Microsoft/TypeScript/master that it was built from.
 
 
