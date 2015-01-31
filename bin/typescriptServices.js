@@ -23617,7 +23617,7 @@ var __extends = this.__extends || function (d, b) {
 };
 var ts;
 (function (ts) {
-    ts.servicesVersion = "0.4";
+    ts.servicesVersion = "0.5";
     var ScriptSnapshot;
     (function (ScriptSnapshot) {
         var StringScriptSnapshot = (function () {

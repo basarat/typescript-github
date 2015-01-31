@@ -19813,7 +19813,7 @@ var ts;
 })(ts || (ts = {}));
 var ts;
 (function (ts) {
-    var version = "1.4.0.0";
+    var version = "1.5.0.0";
     function validateLocaleAndSetLanguage(locale, errors) {
         var matchResult = /^([a-z]+)([_\-]([a-z]+))?$/.exec(locale.toLowerCase());
         if (!matchResult) {
