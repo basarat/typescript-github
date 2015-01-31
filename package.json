@@ -1,5 +1,5 @@
 {
-	"name": "typescript-github",
+	"name": "typescript",
 	"version": "0.1.0",
 	"description": "Somewhat regularly-built snapshots of https://github.com/Microsoft/TypeScript",
 	"keywords": ["TypeScript"],
