@@ -88,7 +88,7 @@ declare module ts {
     function fileExtensionIs(path: string, extension: string): boolean;
     function removeFileExtension(path: string): string;
     /**
-     * Based heavily on the abstract 'Quote' operation from ECMA-262 (24.3.2.2),
+     * Based heavily on the abstract 'Quote'/ 'QuoteJSONString' operation from ECMA-262 (24.3.2.2),
      * but augmented for a few select characters.
      * Note that this doesn't actually wrap the input in double quotes.
      */

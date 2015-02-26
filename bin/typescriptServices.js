@@ -1116,7 +1116,7 @@ var ts;
     }
     ts.removeFileExtension = removeFileExtension;
     var backslashOrDoubleQuote = /[\"\\]/g;
-    var escapedCharsRegExp = /[\0-\19\t\v\f\b\0\r\n\u2028\u2029\u0085]/g;
+    var escapedCharsRegExp = /[\u0000-\u001f\t\v\f\b\r\n\u2028\u2029\u0085]/g;
     var escapedCharsMap = {
         "\0": "\\0",
         "\t": "\\t",
@@ -3688,6 +3688,11 @@ var ts;
             return false;
         }
         var parent = name.parent;
+        if (parent.kind === 207 || parent.kind === 211) {
+            if (parent.propertyName) {
+                return true;
+            }
+        }
         if (isDeclaration(parent) || parent.kind === 160) {
             return parent.name === name;
         }
@@ -7938,7 +7943,8 @@ var ts;
             getSignatureFromDeclaration: getSignatureFromDeclaration,
             isImplementationOfOverload: isImplementationOfOverload,
             getAliasedSymbol: resolveImport,
-            getEmitResolver: getEmitResolver
+            getEmitResolver: getEmitResolver,
+            getExportsOfExternalModule: getExportsOfExternalModule
         };
         var undefinedSymbol = createSymbol(4 | 67108864, "undefined");
         var argumentsSymbol = createSymbol(4 | 67108864, "arguments");
@@ -8516,22 +8522,22 @@ var ts;
         function getExportsOfSymbol(symbol) {
             return symbol.flags & 1536 ? getExportsOfModule(symbol) : symbol.exports;
         }
-        function getExportsOfModule(symbol) {
-            var links = getSymbolLinks(symbol);
-            return links.resolvedExports || (links.resolvedExports = getExportsForModule(symbol));
+        function getExportsOfModule(moduleSymbol) {
+            var links = getSymbolLinks(moduleSymbol);
+            return links.resolvedExports || (links.resolvedExports = getExportsForModule(moduleSymbol));
         }
-        function getExportsForModule(symbol) {
+        function getExportsForModule(moduleSymbol) {
             var result;
             var visitedSymbols = [];
-            visit(symbol);
-            return result;
+            visit(moduleSymbol);
+            return result || moduleSymbol.exports;
             function visit(symbol) {
                 if (!ts.contains(visitedSymbols, symbol)) {
                     visitedSymbols.push(symbol);
-                    if (!result) {
-                        result = symbol.exports;
-                    }
-                    else {
+                    if (symbol !== moduleSymbol) {
+                        if (!result) {
+                            result = cloneSymbolTable(moduleSymbol.exports);
+                        }
                         extendSymbolTable(result, symbol.exports);
                     }
                     ts.forEach(symbol.declarations, function (node) {
@@ -10171,6 +10177,16 @@ var ts;
             });
             return result;
         }
+        function getExportsOfExternalModule(node) {
+            if (!node.moduleSpecifier) {
+                return emptyArray;
+            }
+            var module = resolveExternalModuleName(node, node.moduleSpecifier);
+            if (!module || !module.exports) {
+                return emptyArray;
+            }
+            return ts.mapToArray(getExportsOfModule(module));
+        }
         function getSignatureFromDeclaration(declaration) {
             var links = getNodeLinks(declaration);
             if (!links.resolvedSignature) {
@@ -10826,7 +10842,7 @@ var ts;
                         isContextSensitive(node.whenFalse);
                 case 167:
                     return node.operatorToken.kind === 49 &&
-                    (isContextSensitive(node.left) || isContextSensitive(node.right));
+                        (isContextSensitive(node.left) || isContextSensitive(node.right));
                 case 217:
                     return isContextSensitive(node.initializer);
                 case 132:
@@ -12231,19 +12247,19 @@ var ts;
                         if (container.flags & 128) {
                             canUseSuperExpression =
                                 container.kind === 132 ||
-                                container.kind === 131 ||
-                                container.kind === 134 ||
-                                container.kind === 135;
+                                    container.kind === 131 ||
+                                    container.kind === 134 ||
+                                    container.kind === 135;
                         }
                         else {
                             canUseSuperExpression =
                                 container.kind === 132 ||
-                                container.kind === 131 ||
-                                container.kind === 134 ||
-                                container.kind === 135 ||
-                                container.kind === 130 ||
-                                container.kind === 129 ||
-                                container.kind === 133;
+                                    container.kind === 131 ||
+                                    container.kind === 134 ||
+                                    container.kind === 135 ||
+                                    container.kind === 130 ||
+                                    container.kind === 129 ||
+                                    container.kind === 133;
                         }
                     }
                 }
@@ -13628,8 +13644,8 @@ var ts;
                 if (p.kind === 217 || p.kind === 218) {
                     var name = p.name;
                     var type = sourceType.flags & 1 ? sourceType : getTypeOfPropertyOfType(sourceType, name.text) ||
-                    isNumericLiteralName(name.text) && getIndexTypeOfType(sourceType, 1) ||
-                    getIndexTypeOfType(sourceType, 0);
+                        isNumericLiteralName(name.text) && getIndexTypeOfType(sourceType, 1) ||
+                        getIndexTypeOfType(sourceType, 0);
                     if (type) {
                         checkDestructuringAssignment(p.initializer || name, type);
                     }
@@ -13913,8 +13929,8 @@ var ts;
             }
             if (isConstEnumObjectType(type)) {
                 var ok = (node.parent.kind === 153 && node.parent.expression === node) ||
-                (node.parent.kind === 154 && node.parent.expression === node) ||
-                ((node.kind === 64 || node.kind === 125) && isInRightSideOfImportOrExportAssignment(node));
+                    (node.parent.kind === 154 && node.parent.expression === node) ||
+                    ((node.kind === 64 || node.kind === 125) && isInRightSideOfImportOrExportAssignment(node));
                 if (!ok) {
                     error(node, ts.Diagnostics.const_enums_can_only_be_used_in_property_or_index_access_expressions_or_the_right_hand_side_of_an_import_declaration_or_export_assignment);
                 }
@@ -14139,7 +14155,7 @@ var ts;
             if (ts.getClassBaseTypeNode(node.parent)) {
                 if (containsSuperCall(node.body)) {
                     var superCallShouldBeFirst = ts.forEach(node.parent.members, isInstancePropertyWithInitializer) ||
-                    ts.forEach(node.parameters, function (p) { return p.flags & (16 | 32 | 64); });
+                        ts.forEach(node.parameters, function (p) { return p.flags & (16 | 32 | 64); });
                     if (superCallShouldBeFirst) {
                         var statements = node.body.statements;
                         if (!statements.length || statements[0].kind !== 177 || !isSuperCallExpression(statements[0].expression)) {
@@ -14614,11 +14630,11 @@ var ts;
                         if (getDeclarationFlagsFromSymbol(localDeclarationSymbol) & 6144) {
                             var varDeclList = ts.getAncestor(localDeclarationSymbol.valueDeclaration, 194);
                             var container = varDeclList.parent.kind === 175 &&
-                            varDeclList.parent.parent;
+                                varDeclList.parent.parent;
                             var namesShareScope = container &&
-                            (container.kind === 174 && ts.isAnyFunction(container.parent) ||
-                            (container.kind === 201 && container.kind === 200) ||
-                                container.kind === 220);
+                                (container.kind === 174 && ts.isAnyFunction(container.parent) ||
+                                    (container.kind === 201 && container.kind === 200) ||
+                                    container.kind === 220);
                             if (!namesShareScope) {
                                 var name = symbolToString(localDeclarationSymbol);
                                 error(ts.getErrorSpanForNode(node), ts.Diagnostics.Cannot_initialize_outer_scoped_variable_0_in_the_same_scope_as_block_scoped_declaration_1, name, name);
@@ -15451,8 +15467,8 @@ var ts;
             var target = resolveImport(symbol);
             if (target !== unknownSymbol) {
                 var excludedMeanings = (symbol.flags & 107455 ? 107455 : 0) |
-                (symbol.flags & 793056 ? 793056 : 0) |
-                (symbol.flags & 1536 ? 1536 : 0);
+                    (symbol.flags & 793056 ? 793056 : 0) |
+                    (symbol.flags & 1536 ? 1536 : 0);
                 if (target.flags & excludedMeanings) {
                     var message = node.kind === 211 ? ts.Diagnostics.Export_declaration_conflicts_with_exported_declaration_of_0 : ts.Diagnostics.Import_declaration_conflicts_with_local_declaration_of_0;
                     error(node, message, symbolToString(symbol));
@@ -16007,11 +16023,12 @@ var ts;
                     }
                     return undefined;
                 case 8:
-                    if (ts.isExternalModuleImportEqualsDeclaration(node.parent.parent) &&
-                        ts.getExternalModuleImportEqualsDeclarationExpression(node.parent.parent) === node) {
-                        var importSymbol = getSymbolOfNode(node.parent.parent);
-                        var moduleType = getTypeOfSymbol(importSymbol);
-                        return moduleType ? moduleType.symbol : undefined;
+                    var moduleName;
+                    if ((ts.isExternalModuleImportEqualsDeclaration(node.parent.parent) &&
+                        ts.getExternalModuleImportEqualsDeclarationExpression(node.parent.parent) === node) ||
+                        ((node.parent.kind === 203 || node.parent.kind === 209) &&
+                            node.parent.moduleSpecifier === node)) {
+                        return resolveExternalModuleName(node, node);
                     }
                 case 7:
                     if (node.parent.kind == 154 && node.parent.argumentExpression === node) {
@@ -19485,37 +19502,17 @@ var ts;
                         write(" ");
                     }
                     write(ts.tokenToString(node.operatorToken.kind));
-                    var operatorEnd = ts.getLineAndCharacterOfPosition(currentSourceFile, node.operatorToken.end);
-                    var rightStart = ts.getLineAndCharacterOfPosition(currentSourceFile, ts.skipTrivia(currentSourceFile.text, node.right.pos));
-                    var onDifferentLine = operatorEnd.line !== rightStart.line;
-                    if (onDifferentLine) {
-                        var exprStart = ts.getLineAndCharacterOfPosition(currentSourceFile, ts.skipTrivia(currentSourceFile.text, node.pos));
-                        var firstCharOfExpr = getFirstNonWhitespaceCharacterIndexOnLine(exprStart.line);
-                        var shouldIndent = rightStart.character > firstCharOfExpr;
-                        if (shouldIndent) {
-                            increaseIndent();
-                        }
+                    if (!nodeEndIsOnSameLineAsNodeStart(node.operatorToken, node.right)) {
+                        increaseIndent();
                         writeLine();
+                        emit(node.right);
+                        decreaseIndent();
                     }
                     else {
                         write(" ");
-                    }
-                    emit(node.right);
-                    if (shouldIndent) {
-                        decreaseIndent();
+                        emit(node.right);
                     }
                 }
-            }
-            function getFirstNonWhitespaceCharacterIndexOnLine(line) {
-                var lineStart = ts.getLineStarts(currentSourceFile)[line];
-                var text = currentSourceFile.text;
-                for (var i = lineStart; i < text.length; i++) {
-                    var ch = text.charCodeAt(i);
-                    if (!ts.isWhiteSpace(text.charCodeAt(i)) || ts.isLineBreak(ch)) {
-                        break;
-                    }
-                }
-                return i - lineStart;
             }
             function emitConditionalExpression(node) {
                 emit(node.condition);
@@ -20254,45 +20251,15 @@ var ts;
                 scopeEmitEnd();
             }
             function emitBlockFunctionBody(node, body) {
-                if (body.statements.length === 0 && !anyParameterHasBindingPatternOrInitializer(node)) {
-                    emitFunctionBodyWithNoStatements(node, body);
-                }
-                else {
-                    emitFunctionBodyWithStatements(node, body);
-                }
-            }
-            function anyParameterHasBindingPatternOrInitializer(func) {
-                return ts.forEach(func.parameters, hasBindingPatternOrInitializer);
-            }
-            function hasBindingPatternOrInitializer(parameter) {
-                return parameter.initializer || ts.isBindingPattern(parameter.name);
-            }
-            function emitFunctionBodyWithNoStatements(node, body) {
-                var singleLine = isSingleLineEmptyBlock(node.body);
-                write(" {");
-                if (singleLine) {
-                    write(" ");
-                }
-                else {
-                    increaseIndent();
-                    writeLine();
-                }
-                emitLeadingCommentsOfPosition(body.statements.end);
-                if (!singleLine) {
-                    decreaseIndent();
-                }
-                emitToken(15, body.statements.end);
-            }
-            function emitFunctionBodyWithStatements(node, body) {
                 write(" {");
                 scopeEmitStart(node);
-                var outPos = writer.getTextPos();
+                var initialTextPos = writer.getTextPos();
                 increaseIndent();
                 emitDetachedComments(body.statements);
                 var startIndex = emitDirectivePrologues(body.statements, true);
                 emitFunctionBodyPreamble(node);
                 decreaseIndent();
-                var preambleEmitted = writer.getTextPos() !== outPos;
+                var preambleEmitted = writer.getTextPos() !== initialTextPos;
                 if (!preambleEmitted && nodeEndIsOnSameLineAsNodeStart(body, body)) {
                     for (var i = 0, n = body.statements.length; i < n; i++) {
                         write(" ");
@@ -21513,8 +21480,9 @@ var ts;
             if (options.noEmitOnError && getPreEmitDiagnostics(this).length > 0) {
                 return { diagnostics: [], sourceMaps: undefined, emitSkipped: true };
             }
+            var emitResolver = getDiagnosticsProducingTypeChecker().getEmitResolver(sourceFile);
             var start = new Date().getTime();
-            var emitResult = ts.emitFiles(getDiagnosticsProducingTypeChecker().getEmitResolver(sourceFile), getEmitHost(writeFileCallback), sourceFile);
+            var emitResult = ts.emitFiles(emitResolver, getEmitHost(writeFileCallback), sourceFile);
             ts.emitTime += new Date().getTime() - start;
             return emitResult;
         }
@@ -22383,6 +22351,27 @@ var ts;
                         case 149:
                             ts.forEach(node.elements, visit);
                             break;
+                        case 209:
+                            if (node.exportClause) {
+                                ts.forEach(node.exportClause.elements, visit);
+                            }
+                            break;
+                        case 203:
+                            var importClause = node.importClause;
+                            if (importClause) {
+                                if (importClause.name) {
+                                    childNodes.push(importClause);
+                                }
+                                if (importClause.namedBindings) {
+                                    if (importClause.namedBindings.kind === 205) {
+                                        childNodes.push(importClause.namedBindings);
+                                    }
+                                    else {
+                                        ts.forEach(importClause.namedBindings.elements, visit);
+                                    }
+                                }
+                            }
+                            break;
                         case 150:
                         case 193:
                             if (ts.isBindingPattern(node.name)) {
@@ -22394,7 +22383,11 @@ var ts;
                         case 197:
                         case 200:
                         case 195:
+                        case 202:
+                        case 207:
+                        case 211:
                             childNodes.push(node);
+                            break;
                     }
                 }
                 ts.forEach(nodes, visit);
@@ -22559,6 +22552,12 @@ var ts;
                         }
                     case 133:
                         return createItem(node, "constructor", ts.ScriptElementKind.constructorImplementationElement);
+                    case 211:
+                    case 207:
+                    case 202:
+                    case 204:
+                    case 205:
+                        return createItem(node, getTextOfNode(node.name), ts.ScriptElementKind.alias);
                 }
                 return undefined;
                 function createItem(node, name, scriptElementKind) {
@@ -22642,7 +22641,7 @@ var ts;
                         });
                         var nodes = removeDynamicallyNamedProperties(node);
                         if (constructor) {
-                            nodes.push.apply(nodes, constructor.parameters);
+                            nodes.push.apply(nodes, ts.filter(constructor.parameters, function (p) { return !ts.isBindingPattern(p.name); }));
                         }
                         var childItems = getItemsWorker(sortNodes(nodes), createChildItem);
                     }
@@ -23511,7 +23510,7 @@ var ts;
             for (var i = 0, len = children.length; i < len; ++i) {
                 var child = children[i];
                 var shouldDiveInChildNode = (child.pos <= previousToken.pos && child.end > previousToken.end) ||
-                (child.pos === previousToken.end);
+                    (child.pos === previousToken.end);
                 if (shouldDiveInChildNode && nodeHasTokens(child)) {
                     return find(child);
                 }
@@ -24223,7 +24222,7 @@ var ts;
                 this.NoSpaceBeforeCloseBracket = new formatting.Rule(formatting.RuleDescriptor.create2(formatting.Shared.TokenRange.Any, 19), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext), 8));
                 this.NoSpaceAfterCloseBracket = new formatting.Rule(formatting.RuleDescriptor.create3(19, formatting.Shared.TokenRange.Any), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext), 8));
                 this.FunctionOpenBraceLeftTokenRange = formatting.Shared.TokenRange.AnyIncludingMultilineComments;
-                this.SpaceBeforeOpenBraceInFunction = new formatting.Rule(formatting.RuleDescriptor.create2(this.FunctionOpenBraceLeftTokenRange, 14), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsFunctionDeclContext, Rules.IsNotFormatOnEnter, Rules.IsSameLineTokenOrBeforeMultilineBlockContext), 2), 1);
+                this.SpaceBeforeOpenBraceInFunction = new formatting.Rule(formatting.RuleDescriptor.create2(this.FunctionOpenBraceLeftTokenRange, 14), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsFunctionDeclContext, Rules.IsBeforeBlockContext, Rules.IsNotFormatOnEnter, Rules.IsSameLineTokenOrBeforeMultilineBlockContext), 2), 1);
                 this.TypeScriptOpenBraceLeftTokenRange = formatting.Shared.TokenRange.FromTokens([64, 3]);
                 this.SpaceBeforeOpenBraceInTypeScriptDeclWithBlock = new formatting.Rule(formatting.RuleDescriptor.create2(this.TypeScriptOpenBraceLeftTokenRange, 14), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsTypeScriptDeclWithBlockContext, Rules.IsNotFormatOnEnter, Rules.IsSameLineTokenOrBeforeMultilineBlockContext), 2), 1);
                 this.ControlOpenBraceLeftTokenRange = formatting.Shared.TokenRange.FromTokens([17, 3, 74, 95, 80, 75]);
@@ -24246,6 +24245,7 @@ var ts;
                 this.SpaceAfterSubtractWhenFollowedByPredecrement = new formatting.Rule(formatting.RuleDescriptor.create1(34, 39), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext, Rules.IsBinaryOpContext), 2));
                 this.NoSpaceBeforeComma = new formatting.Rule(formatting.RuleDescriptor.create2(formatting.Shared.TokenRange.Any, 23), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext), 8));
                 this.SpaceAfterCertainKeywords = new formatting.Rule(formatting.RuleDescriptor.create4(formatting.Shared.TokenRange.FromTokens([97, 93, 87, 73, 89, 96]), formatting.Shared.TokenRange.Any), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext), 2));
+                this.SpaceAfterLetConstInVariableDeclaration = new formatting.Rule(formatting.RuleDescriptor.create4(formatting.Shared.TokenRange.FromTokens([105, 69]), formatting.Shared.TokenRange.Any), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext, Rules.IsStartOfVariableDeclarationList), 2));
                 this.NoSpaceBeforeOpenParenInFuncCall = new formatting.Rule(formatting.RuleDescriptor.create2(formatting.Shared.TokenRange.Any, 16), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext, Rules.IsFunctionCallOrNewContext, Rules.IsPreviousTokenNotComma), 8));
                 this.SpaceAfterFunctionInFuncDecl = new formatting.Rule(formatting.RuleDescriptor.create3(82, formatting.Shared.TokenRange.Any), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsFunctionDeclContext), 2));
                 this.NoSpaceBeforeOpenParenInFuncDecl = new formatting.Rule(formatting.RuleDescriptor.create2(formatting.Shared.TokenRange.Any, 16), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext, Rules.IsFunctionDeclContext), 8));
@@ -24271,51 +24271,52 @@ var ts;
                 this.NoSpaceAfterCloseAngularBracket = new formatting.Rule(formatting.RuleDescriptor.create3(25, formatting.Shared.TokenRange.FromTokens([16, 18, 25, 23])), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext, Rules.IsTypeArgumentOrParameterContext), 8));
                 this.NoSpaceBetweenEmptyInterfaceBraceBrackets = new formatting.Rule(formatting.RuleDescriptor.create1(14, 15), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext, Rules.IsObjectTypeContext), 8));
                 this.HighPriorityCommonRules =
-                [
-                    this.IgnoreBeforeComment, this.IgnoreAfterLineComment,
-                    this.NoSpaceBeforeColon, this.SpaceAfterColon, this.NoSpaceBeforeQuestionMark, this.SpaceAfterQuestionMarkInConditionalOperator,
-                    this.NoSpaceAfterQuestionMark,
-                    this.NoSpaceBeforeDot, this.NoSpaceAfterDot,
-                    this.NoSpaceAfterUnaryPrefixOperator,
-                    this.NoSpaceAfterUnaryPreincrementOperator, this.NoSpaceAfterUnaryPredecrementOperator,
-                    this.NoSpaceBeforeUnaryPostincrementOperator, this.NoSpaceBeforeUnaryPostdecrementOperator,
-                    this.SpaceAfterPostincrementWhenFollowedByAdd,
-                    this.SpaceAfterAddWhenFollowedByUnaryPlus, this.SpaceAfterAddWhenFollowedByPreincrement,
-                    this.SpaceAfterPostdecrementWhenFollowedBySubtract,
-                    this.SpaceAfterSubtractWhenFollowedByUnaryMinus, this.SpaceAfterSubtractWhenFollowedByPredecrement,
-                    this.NoSpaceAfterCloseBrace,
-                    this.SpaceAfterOpenBrace, this.SpaceBeforeCloseBrace, this.NewLineBeforeCloseBraceInBlockContext,
-                    this.SpaceAfterCloseBrace, this.SpaceBetweenCloseBraceAndElse, this.SpaceBetweenCloseBraceAndWhile, this.NoSpaceBetweenEmptyBraceBrackets,
-                    this.SpaceAfterFunctionInFuncDecl, this.NewLineAfterOpenBraceInBlockContext, this.SpaceAfterGetSetInMember,
-                    this.NoSpaceBetweenReturnAndSemicolon,
-                    this.SpaceAfterCertainKeywords,
-                    this.NoSpaceBeforeOpenParenInFuncCall,
-                    this.SpaceBeforeBinaryKeywordOperator, this.SpaceAfterBinaryKeywordOperator,
-                    this.SpaceAfterVoidOperator,
-                    this.NoSpaceAfterConstructor, this.NoSpaceAfterModuleImport,
-                    this.SpaceAfterCertainTypeScriptKeywords, this.SpaceBeforeCertainTypeScriptKeywords,
-                    this.SpaceAfterModuleName,
-                    this.SpaceAfterArrow,
-                    this.NoSpaceAfterEllipsis,
-                    this.NoSpaceAfterOptionalParameters,
-                    this.NoSpaceBetweenEmptyInterfaceBraceBrackets,
-                    this.NoSpaceBeforeOpenAngularBracket,
-                    this.NoSpaceBetweenCloseParenAndAngularBracket,
-                    this.NoSpaceAfterOpenAngularBracket,
-                    this.NoSpaceBeforeCloseAngularBracket,
-                    this.NoSpaceAfterCloseAngularBracket
-                ];
+                    [
+                        this.IgnoreBeforeComment, this.IgnoreAfterLineComment,
+                        this.NoSpaceBeforeColon, this.SpaceAfterColon, this.NoSpaceBeforeQuestionMark, this.SpaceAfterQuestionMarkInConditionalOperator,
+                        this.NoSpaceAfterQuestionMark,
+                        this.NoSpaceBeforeDot, this.NoSpaceAfterDot,
+                        this.NoSpaceAfterUnaryPrefixOperator,
+                        this.NoSpaceAfterUnaryPreincrementOperator, this.NoSpaceAfterUnaryPredecrementOperator,
+                        this.NoSpaceBeforeUnaryPostincrementOperator, this.NoSpaceBeforeUnaryPostdecrementOperator,
+                        this.SpaceAfterPostincrementWhenFollowedByAdd,
+                        this.SpaceAfterAddWhenFollowedByUnaryPlus, this.SpaceAfterAddWhenFollowedByPreincrement,
+                        this.SpaceAfterPostdecrementWhenFollowedBySubtract,
+                        this.SpaceAfterSubtractWhenFollowedByUnaryMinus, this.SpaceAfterSubtractWhenFollowedByPredecrement,
+                        this.NoSpaceAfterCloseBrace,
+                        this.SpaceAfterOpenBrace, this.SpaceBeforeCloseBrace, this.NewLineBeforeCloseBraceInBlockContext,
+                        this.SpaceAfterCloseBrace, this.SpaceBetweenCloseBraceAndElse, this.SpaceBetweenCloseBraceAndWhile, this.NoSpaceBetweenEmptyBraceBrackets,
+                        this.SpaceAfterFunctionInFuncDecl, this.NewLineAfterOpenBraceInBlockContext, this.SpaceAfterGetSetInMember,
+                        this.NoSpaceBetweenReturnAndSemicolon,
+                        this.SpaceAfterCertainKeywords,
+                        this.SpaceAfterLetConstInVariableDeclaration,
+                        this.NoSpaceBeforeOpenParenInFuncCall,
+                        this.SpaceBeforeBinaryKeywordOperator, this.SpaceAfterBinaryKeywordOperator,
+                        this.SpaceAfterVoidOperator,
+                        this.NoSpaceAfterConstructor, this.NoSpaceAfterModuleImport,
+                        this.SpaceAfterCertainTypeScriptKeywords, this.SpaceBeforeCertainTypeScriptKeywords,
+                        this.SpaceAfterModuleName,
+                        this.SpaceAfterArrow,
+                        this.NoSpaceAfterEllipsis,
+                        this.NoSpaceAfterOptionalParameters,
+                        this.NoSpaceBetweenEmptyInterfaceBraceBrackets,
+                        this.NoSpaceBeforeOpenAngularBracket,
+                        this.NoSpaceBetweenCloseParenAndAngularBracket,
+                        this.NoSpaceAfterOpenAngularBracket,
+                        this.NoSpaceBeforeCloseAngularBracket,
+                        this.NoSpaceAfterCloseAngularBracket
+                    ];
                 this.LowPriorityCommonRules =
-                [
-                    this.NoSpaceBeforeSemicolon,
-                    this.SpaceBeforeOpenBraceInControl, this.SpaceBeforeOpenBraceInFunction, this.SpaceBeforeOpenBraceInTypeScriptDeclWithBlock,
-                    this.NoSpaceBeforeComma,
-                    this.NoSpaceBeforeOpenBracket, this.NoSpaceAfterOpenBracket,
-                    this.NoSpaceBeforeCloseBracket, this.NoSpaceAfterCloseBracket,
-                    this.SpaceAfterSemicolon,
-                    this.NoSpaceBeforeOpenParenInFuncDecl,
-                    this.SpaceBetweenStatements, this.SpaceAfterTryFinally
-                ];
+                    [
+                        this.NoSpaceBeforeSemicolon,
+                        this.SpaceBeforeOpenBraceInControl, this.SpaceBeforeOpenBraceInFunction, this.SpaceBeforeOpenBraceInTypeScriptDeclWithBlock,
+                        this.NoSpaceBeforeComma,
+                        this.NoSpaceBeforeOpenBracket, this.NoSpaceAfterOpenBracket,
+                        this.NoSpaceBeforeCloseBracket, this.NoSpaceAfterCloseBracket,
+                        this.SpaceAfterSemicolon,
+                        this.NoSpaceBeforeOpenParenInFuncDecl,
+                        this.SpaceBetweenStatements, this.SpaceAfterTryFinally
+                    ];
                 this.SpaceAfterComma = new formatting.Rule(formatting.RuleDescriptor.create3(23, formatting.Shared.TokenRange.Any), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext), 2));
                 this.NoSpaceAfterComma = new formatting.Rule(formatting.RuleDescriptor.create3(23, formatting.Shared.TokenRange.Any), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext), 8));
                 this.SpaceBeforeBinaryOperator = new formatting.Rule(formatting.RuleDescriptor.create4(formatting.Shared.TokenRange.Any, formatting.Shared.TokenRange.BinaryOperators), formatting.RuleOperation.create2(new formatting.RuleOperationContext(Rules.IsSameLineTokenContext, Rules.IsBinaryOpContext), 2));
@@ -24368,6 +24369,8 @@ var ts;
                         return context.currentTokenSpan.kind === 85 || context.nextTokenSpan.kind === 85;
                     case 183:
                         return context.currentTokenSpan.kind === 124 || context.nextTokenSpan.kind === 124;
+                    case 150:
+                        return context.currentTokenSpan.kind === 52 || context.nextTokenSpan.kind === 52;
                 }
                 return false;
             };
@@ -24485,6 +24488,10 @@ var ts;
             };
             Rules.IsSameLineTokenContext = function (context) {
                 return context.TokensAreOnSameLine();
+            };
+            Rules.IsStartOfVariableDeclarationList = function (context) {
+                return context.currentTokenParent.kind === 194 &&
+                    context.currentTokenParent.getStart(context.sourceFile) === context.currentTokenSpan.pos;
             };
             Rules.IsNotFormatOnEnter = function (context) {
                 return context.formattingRequestKind != 2;
@@ -25332,8 +25339,8 @@ var ts;
                         }
                     }
                     trimTrailingWhitespaces =
-                    (rule.Operation.Action & (4 | 2)) &&
-                    rule.Flag !== 1;
+                        (rule.Operation.Action & (4 | 2)) &&
+                            rule.Flag !== 1;
                 }
                 else {
                     trimTrailingWhitespaces = true;
@@ -25376,8 +25383,8 @@ var ts;
                     parts.push({ pos: startPos, end: commentRange.end });
                 }
                 var startLinePos = ts.getStartPositionOfLine(startLine, sourceFile);
-                var nonWhitespaceColumnInFirstPart = formatting.SmartIndenter.findFirstNonWhitespaceColumn(startLinePos, parts[0].pos, sourceFile, options);
-                if (indentation === nonWhitespaceColumnInFirstPart) {
+                var nonWhitespaceColumnInFirstPart = formatting.SmartIndenter.findFirstNonWhitespaceCharacterAndColumn(startLinePos, parts[0].pos, sourceFile, options);
+                if (indentation === nonWhitespaceColumnInFirstPart.column) {
                     return;
                 }
                 var startIndex = 0;
@@ -25385,17 +25392,17 @@ var ts;
                     startIndex = 1;
                     startLine++;
                 }
-                var delta = indentation - nonWhitespaceColumnInFirstPart;
+                var delta = indentation - nonWhitespaceColumnInFirstPart.column;
                 for (var i = startIndex, len = parts.length; i < len; ++i, ++startLine) {
                     var startLinePos = ts.getStartPositionOfLine(startLine, sourceFile);
-                    var nonWhitespaceColumn = i === 0 ? nonWhitespaceColumnInFirstPart : formatting.SmartIndenter.findFirstNonWhitespaceColumn(parts[i].pos, parts[i].end, sourceFile, options);
-                    var newIndentation = nonWhitespaceColumn + delta;
+                    var nonWhitespaceCharacterAndColumn = i === 0 ? nonWhitespaceColumnInFirstPart : formatting.SmartIndenter.findFirstNonWhitespaceCharacterAndColumn(parts[i].pos, parts[i].end, sourceFile, options);
+                    var newIndentation = nonWhitespaceCharacterAndColumn.column + delta;
                     if (newIndentation > 0) {
                         var indentationString = getIndentationString(newIndentation, options);
-                        recordReplace(startLinePos, nonWhitespaceColumn, indentationString);
+                        recordReplace(startLinePos, nonWhitespaceCharacterAndColumn.character, indentationString);
                     }
                     else {
-                        recordDelete(startLinePos, nonWhitespaceColumn);
+                        recordDelete(startLinePos, nonWhitespaceCharacterAndColumn.character);
                     }
                 }
             }
@@ -25559,6 +25566,10 @@ var ts;
     (function (formatting) {
         var SmartIndenter;
         (function (SmartIndenter) {
+            var Value;
+            (function (Value) {
+                Value[Value["Unknown"] = -1] = "Unknown";
+            })(Value || (Value = {}));
             function getIndentation(position, sourceFile, options) {
                 if (position > sourceFile.text.length) {
                     return 0;
@@ -25568,11 +25579,11 @@ var ts;
                     return 0;
                 }
                 var precedingTokenIsLiteral = precedingToken.kind === 8 ||
-                precedingToken.kind === 9 ||
-                precedingToken.kind === 10 ||
-                precedingToken.kind === 11 ||
-                precedingToken.kind === 12 ||
-                precedingToken.kind === 13;
+                    precedingToken.kind === 9 ||
+                    precedingToken.kind === 10 ||
+                    precedingToken.kind === 11 ||
+                    precedingToken.kind === 12 ||
+                    precedingToken.kind === 13;
                 if (precedingTokenIsLiteral && precedingToken.getStart(sourceFile) <= position && precedingToken.end > position) {
                     return 0;
                 }
@@ -25633,7 +25644,7 @@ var ts;
                     }
                     parentStart = getParentStart(parent, current, sourceFile);
                     var parentAndChildShareLine = parentStart.line === currentStart.line ||
-                    childStartsOnTheSameLineWithElseInIfStatement(parent, current, currentStart.line, sourceFile);
+                        childStartsOnTheSameLineWithElseInIfStatement(parent, current, currentStart.line, sourceFile);
                     if (useActualIndentation) {
                         var actualIndentation = getActualIndentationForNode(current, parent, currentStart, parentAndChildShareLine, sourceFile, options);
                         if (actualIndentation !== -1) {
@@ -25658,12 +25669,16 @@ var ts;
             }
             function getActualIndentationForListItemBeforeComma(commaToken, sourceFile, options) {
                 var commaItemInfo = ts.findListItemInfo(commaToken);
-                ts.Debug.assert(commaItemInfo && commaItemInfo.listItemIndex > 0);
-                return deriveActualIndentationFromList(commaItemInfo.list.getChildren(), commaItemInfo.listItemIndex - 1, sourceFile, options);
+                if (commaItemInfo && commaItemInfo.listItemIndex > 0) {
+                    return deriveActualIndentationFromList(commaItemInfo.list.getChildren(), commaItemInfo.listItemIndex - 1, sourceFile, options);
+                }
+                else {
+                    return -1;
+                }
             }
             function getActualIndentationForNode(current, parent, currentLineAndChar, parentAndChildShareLine, sourceFile, options) {
                 var useActualIndentation = (ts.isDeclaration(current) || ts.isStatement(current)) &&
-                (parent.kind === 220 || !parentAndChildShareLine);
+                    (parent.kind === 220 || !parentAndChildShareLine);
                 if (!useActualIndentation) {
                     return -1;
                 }
@@ -25772,12 +25787,13 @@ var ts;
                 var lineStart = sourceFile.getPositionOfLineAndCharacter(lineAndCharacter.line, 0);
                 return findFirstNonWhitespaceColumn(lineStart, lineStart + lineAndCharacter.character, sourceFile, options);
             }
-            function findFirstNonWhitespaceColumn(startPos, endPos, sourceFile, options) {
+            function findFirstNonWhitespaceCharacterAndColumn(startPos, endPos, sourceFile, options) {
+                var character = 0;
                 var column = 0;
                 for (var pos = startPos; pos < endPos; ++pos) {
                     var ch = sourceFile.text.charCodeAt(pos);
                     if (!ts.isWhiteSpace(ch)) {
-                        return column;
+                        break;
                     }
                     if (ch === 9) {
                         column += options.TabSize + (column % options.TabSize);
@@ -25785,8 +25801,13 @@ var ts;
                     else {
                         column++;
                     }
+                    character++;
                 }
-                return column;
+                return { column: column, character: character };
+            }
+            SmartIndenter.findFirstNonWhitespaceCharacterAndColumn = findFirstNonWhitespaceCharacterAndColumn;
+            function findFirstNonWhitespaceColumn(startPos, endPos, sourceFile, options) {
+                return findFirstNonWhitespaceCharacterAndColumn(startPos, endPos, sourceFile, options).column;
             }
             SmartIndenter.findFirstNonWhitespaceColumn = findFirstNonWhitespaceColumn;
             function nodeContentIsAlwaysIndented(kind) {
@@ -26430,6 +26451,11 @@ var ts;
                         case 199:
                         case 200:
                         case 202:
+                        case 211:
+                        case 207:
+                        case 202:
+                        case 204:
+                        case 205:
                         case 134:
                         case 135:
                         case 143:
@@ -26463,6 +26489,27 @@ var ts;
                         case 130:
                         case 129:
                             namedDeclarations.push(node);
+                            break;
+                        case 209:
+                            if (node.exportClause) {
+                                ts.forEach(node.exportClause.elements, visit);
+                            }
+                            break;
+                        case 203:
+                            var importClause = node.importClause;
+                            if (importClause) {
+                                if (importClause.name) {
+                                    namedDeclarations.push(importClause);
+                                }
+                                if (importClause.namedBindings) {
+                                    if (importClause.namedBindings.kind === 205) {
+                                        namedDeclarations.push(importClause.namedBindings);
+                                    }
+                                    else {
+                                        ts.forEach(importClause.namedBindings.elements, visit);
+                                    }
+                                }
+                            }
                             break;
                     }
                 });
@@ -27074,6 +27121,12 @@ var ts;
             case 127: return ScriptElementKind.typeParameterElement;
             case 219: return ScriptElementKind.variableElement;
             case 128: return (node.flags & 112) ? ScriptElementKind.memberVariableElement : ScriptElementKind.parameterElement;
+            case 202:
+            case 207:
+            case 204:
+            case 211:
+            case 205:
+                return ScriptElementKind.alias;
         }
         return ScriptElementKind.unknown;
     }
@@ -27335,6 +27388,17 @@ var ts;
                         getCompletionEntriesFromSymbols(filteredMembers, activeCompletionSession);
                     }
                 }
+                else if (ts.getAncestor(previousToken, 204)) {
+                    isMemberCompletion = true;
+                    isNewIdentifierLocation = true;
+                    if (showCompletionsInImportsClause(previousToken)) {
+                        var importDeclaration = ts.getAncestor(previousToken, 203);
+                        ts.Debug.assert(importDeclaration !== undefined);
+                        var exports = typeInfoResolver.getExportsOfExternalModule(importDeclaration);
+                        var filteredExports = filterModuleExports(exports, importDeclaration);
+                        getCompletionEntriesFromSymbols(filteredExports, activeCompletionSession);
+                    }
+                }
                 else {
                     isMemberCompletion = false;
                     isNewIdentifierLocation = isNewIdentifierDefinitionLocation(previousToken);
@@ -27374,6 +27438,14 @@ var ts;
                     isRightOfIllegalDot(previousToken);
                 log("getCompletionsAtPosition: isCompletionListBlocker: " + (new Date().getTime() - start));
                 return result;
+            }
+            function showCompletionsInImportsClause(node) {
+                if (node) {
+                    if (node.kind === 14 || node.kind === 23) {
+                        return node.parent.kind === 206;
+                    }
+                }
+                return false;
             }
             function isNewIdentifierDefinitionLocation(previousToken) {
                 if (previousToken) {
@@ -27534,6 +27606,23 @@ var ts;
                     return text.charAt(text.length - 1) === ".";
                 }
                 return false;
+            }
+            function filterModuleExports(exports, importDeclaration) {
+                var exisingImports = {};
+                if (!importDeclaration.importClause) {
+                    return exports;
+                }
+                if (importDeclaration.importClause.namedBindings &&
+                    importDeclaration.importClause.namedBindings.kind === 206) {
+                    ts.forEach(importDeclaration.importClause.namedBindings.elements, function (el) {
+                        var name = el.propertyName || el.name;
+                        exisingImports[name.text] = true;
+                    });
+                }
+                if (ts.isEmpty(exisingImports)) {
+                    return exports;
+                }
+                return ts.filter(exports, function (e) { return !ts.lookUp(exisingImports, e.name); });
             }
             function filterContextualMembersList(contextualMemberSymbols, existingMembers) {
                 if (!existingMembers || existingMembers.length === 0) {
@@ -28041,6 +28130,12 @@ var ts;
             var symbol = typeInfoResolver.getSymbolAtLocation(node);
             if (!symbol) {
                 return undefined;
+            }
+            if (symbol.flags & 8388608) {
+                var declaration = symbol.declarations[0];
+                if (node.kind === 64 && node.parent === declaration) {
+                    symbol = typeInfoResolver.getAliasedSymbol(symbol);
+                }
             }
             var result = [];
             if (node.parent.kind === 218) {
@@ -28598,7 +28693,7 @@ var ts;
             }
             var result;
             var searchMeaning = getIntersectingMeaningFromDeclarations(getMeaningFromLocation(node), declarations);
-            var declaredName = getDeclaredName(symbol);
+            var declaredName = getDeclaredName(symbol, node);
             var scope = getSymbolScope(symbol);
             if (scope) {
                 result = [];
@@ -28611,7 +28706,7 @@ var ts;
                     getReferencesInNode(sourceFiles[0], symbol, declaredName, node, searchMeaning, findInStrings, findInComments, result);
                 }
                 else {
-                    var internedName = getInternedName(symbol, declarations);
+                    var internedName = getInternedName(symbol, node, declarations);
                     ts.forEach(sourceFiles, function (sourceFile) {
                         cancellationToken.throwIfCancellationRequested();
                         if (!sourceFile.nameTable) {
@@ -28626,11 +28721,31 @@ var ts;
                 }
             }
             return result;
-            function getDeclaredName(symbol) {
+            function isImportOrExportSpecifierName(location) {
+                return location.parent &&
+                    (location.parent.kind === 207 || location.parent.kind === 211) &&
+                    location.parent.propertyName === location;
+            }
+            function isImportOrExportSpecifierImportSymbol(symbol) {
+                return (symbol.flags & 8388608) && ts.forEach(symbol.declarations, function (declaration) {
+                    return declaration.kind === 207 || declaration.kind === 211;
+                });
+            }
+            function getDeclaredName(symbol, location) {
+                var functionExpression = ts.forEach(symbol.declarations, function (d) { return d.kind === 160 ? d : undefined; });
+                if (functionExpression && functionExpression.name) {
+                    var name = functionExpression.name.text;
+                }
+                if (isImportOrExportSpecifierName(location)) {
+                    return location.getText();
+                }
                 var name = typeInfoResolver.symbolToString(symbol);
                 return stripQuotes(name);
             }
-            function getInternedName(symbol, declarations) {
+            function getInternedName(symbol, location, declarations) {
+                if (isImportOrExportSpecifierName(location)) {
+                    return location.getText();
+                }
                 var functionExpression = ts.forEach(declarations, function (d) { return d.kind === 160 ? d : undefined; });
                 if (functionExpression && functionExpression.name) {
                     var name = functionExpression.name.text;
@@ -28649,13 +28764,16 @@ var ts;
                 return name;
             }
             function getSymbolScope(symbol) {
-                if (symbol.getFlags() && (4 | 8192)) {
+                if (symbol.flags & (4 | 8192)) {
                     var privateDeclaration = ts.forEach(symbol.getDeclarations(), function (d) { return (d.flags & 32) ? d : undefined; });
                     if (privateDeclaration) {
                         return ts.getAncestor(privateDeclaration, 196);
                     }
                 }
-                if (symbol.parent || (symbol.getFlags() & 268435456)) {
+                if (symbol.flags & 8388608) {
+                    return undefined;
+                }
+                if (symbol.parent || (symbol.flags & 268435456)) {
                     return undefined;
                 }
                 var scope = undefined;
@@ -28906,6 +29024,9 @@ var ts;
             }
             function populateSearchSymbolSet(symbol, location) {
                 var result = [symbol];
+                if (isImportOrExportSpecifierImportSymbol(symbol)) {
+                    result.push(typeInfoResolver.getAliasedSymbol(symbol));
+                }
                 if (isNameOfPropertyAssignment(location)) {
                     ts.forEach(getPropertySymbolsFromContextualType(location), function (contextualSymbol) {
                         result.push.apply(result, typeInfoResolver.getRootSymbols(contextualSymbol));
@@ -28953,6 +29074,10 @@ var ts;
             }
             function isRelatableToSearchSet(searchSymbols, referenceSymbol, referenceLocation) {
                 if (searchSymbols.indexOf(referenceSymbol) >= 0) {
+                    return true;
+                }
+                if (isImportOrExportSpecifierImportSymbol(referenceSymbol) &&
+                    searchSymbols.indexOf(typeInfoResolver.getAliasedSymbol(referenceSymbol)) >= 0) {
                     return true;
                 }
                 if (isNameOfPropertyAssignment(referenceLocation)) {
@@ -29110,11 +29235,17 @@ var ts;
                     else {
                         return 4;
                     }
+                case 206:
+                case 207:
                 case 202:
+                case 203:
+                case 208:
+                case 209:
                     return 1 | 2 | 4;
                 case 220:
                     return 4 | 1;
             }
+            return 1 | 2 | 4;
             ts.Debug.fail("Unknown declaration type");
         }
         function isTypeReference(node) {
@@ -30084,6 +30215,10 @@ var ts;
                             return textSpan(node, node.exportName);
                         case 202:
                             return textSpan(node, node.moduleReference);
+                        case 203:
+                            return textSpan(node, node.moduleSpecifier);
+                        case 209:
+                            return textSpan(node, node.moduleSpecifier);
                         case 200:
                             if (ts.getModuleInstanceState(node) !== 1) {
                                 return undefined;
@@ -30408,7 +30543,12 @@ var ts;
             return this.shimHost.getCurrentDirectory();
         };
         LanguageServiceShimHostAdapter.prototype.getDefaultLibFileName = function (options) {
-            return this.shimHost.getDefaultLibFileName(JSON.stringify(options));
+            try {
+                return this.shimHost.getDefaultLibFileName(JSON.stringify(options));
+            }
+            catch (e) {
+                return "";
+            }
         };
         return LanguageServiceShimHostAdapter;
     })();
