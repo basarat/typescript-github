@@ -143,6 +143,11 @@ declare module ts {
         diagnosticMessage?: DiagnosticMessage;
         isNoDefaultLib?: boolean;
     }
+    interface SynthesizedNode extends Node {
+        leadingCommentRanges?: CommentRange[];
+        trailingCommentRanges?: CommentRange[];
+        startsOnNewLine: boolean;
+    }
     function getDeclarationOfKind(symbol: Symbol, kind: SyntaxKind): Declaration;
     interface StringSymbolWriter extends SymbolWriter {
         string(): string;
@@ -171,6 +176,8 @@ declare module ts {
     function escapeIdentifier(identifier: string): string;
     function unescapeIdentifier(identifier: string): string;
     function makeIdentifierFromModuleName(moduleName: string): string;
+    function isBlockOrCatchScoped(declaration: Declaration): boolean;
+    function isCatchClauseVariableDeclaration(declaration: Declaration): boolean;
     function declarationNameToString(name: DeclarationName): string;
     function createDiagnosticForNode(node: Node, message: DiagnosticMessage, arg0?: any, arg1?: any, arg2?: any): Diagnostic;
     function createDiagnosticForNodeFromMessageChain(node: Node, messageChain: DiagnosticMessageChain): Diagnostic;
@@ -209,7 +216,7 @@ declare module ts {
     function isInAmbientContext(node: Node): boolean;
     function isDeclaration(node: Node): boolean;
     function isStatement(n: Node): boolean;
-    function isDeclarationOrFunctionExpressionOrCatchVariableName(name: Node): boolean;
+    function isDeclarationName(name: Node): boolean;
     function getClassBaseTypeNode(node: ClassDeclaration): TypeReferenceNode;
     function getClassImplementedTypeNodes(node: ClassDeclaration): NodeArray<TypeReferenceNode>;
     function getInterfaceBaseTypeNodes(node: InterfaceDeclaration): NodeArray<TypeReferenceNode>;
@@ -265,6 +272,11 @@ declare module ts {
      * Vn.
      */
     function collapseTextChangeRangesAcrossMultipleVersions(changes: TextChangeRange[]): TextChangeRange;
+    function nodeStartsNewLexicalEnvironment(n: Node): boolean;
+    function nodeIsSynthesized(node: Node): boolean;
+    function createSynthesizedNode(kind: SyntaxKind, startsOnNewLine?: boolean): Node;
+    function generateUniqueName(baseName: string, isExistingName: (name: string) => boolean): string;
+    function createDiagnosticCollection(): DiagnosticCollection;
 }
 declare module ts {
     var optionDeclarations: CommandLineOption[];
