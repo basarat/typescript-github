@@ -45,7 +45,7 @@ commitHash=`git rev-parse HEAD`
 npm install jake
 
 # Build once with LKG
-./node_modules/.bin/jake release generate-diagnostics lib built/local/tsc.js --trace
+./node_modules/.bin/jake release tsc --trace
 cp ./built/local/* ./bin/
 
 # Rebuild with itself
