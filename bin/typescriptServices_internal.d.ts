@@ -87,12 +87,6 @@ declare module ts {
     function combinePaths(path1: string, path2: string): string;
     function fileExtensionIs(path: string, extension: string): boolean;
     function removeFileExtension(path: string): string;
-    /**
-     * Based heavily on the abstract 'Quote'/ 'QuoteJSONString' operation from ECMA-262 (24.3.2.2),
-     * but augmented for a few select characters.
-     * Note that this doesn't actually wrap the input in double quotes.
-     */
-    function escapeString(s: string): string;
     function getDefaultLibFileName(options: CompilerOptions): string;
     interface ObjectAllocator {
         getNodeConstructor(kind: SyntaxKind): new () => Node;
@@ -277,6 +271,13 @@ declare module ts {
     function createSynthesizedNode(kind: SyntaxKind, startsOnNewLine?: boolean): Node;
     function generateUniqueName(baseName: string, isExistingName: (name: string) => boolean): string;
     function createDiagnosticCollection(): DiagnosticCollection;
+    /**
+     * Based heavily on the abstract 'Quote'/'QuoteJSONString' operation from ECMA-262 (24.3.2.2),
+     * but augmented for a few select characters (e.g. lineSeparator, paragraphSeparator, nextLine)
+     * Note that this doesn't actually wrap the input in double quotes.
+     */
+    function escapeString(s: string): string;
+    function escapeNonAsciiCharacters(s: string): string;
 }
 declare module ts {
     var optionDeclarations: CommandLineOption[];
