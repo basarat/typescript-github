@@ -5,8 +5,8 @@
 	"keywords": ["TypeScript"],
 	"homepage": "https://github.com/Arnavion/typescript-github",
 	"licenses": [{
-		"type": "Apache-2.0",
-		"url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+		"type": "Apache License 2.0",
+		"url": "https://github.com/Microsoft/TypeScript/blob/master/LICENSE.txt"
 	}],
 	"maintainers": [{
 		"name": "Arnav Singh",
@@ -16,9 +16,10 @@
 		"type": "git",
 		"url": "https://github.com/Arnavion/typescript-github"
 	},
-	"main": "./bin/typescriptServices.js",
+	"main": "./bin/typescript.js",
 	"bin": {
-		"tsc": "./bin/tsc"
+		"tsc": "./bin/tsc",
+		"tsserver": "./bin/tsserver"
 	},
 	"engines": {
 		"node": ">=0.8.0"
