@@ -59,6 +59,8 @@ cp ./built/local/* ./bin/tsc $typeScriptGithubDirectory/bin/
 
 # Commit and push
 cd $typeScriptGithubDirectory
+< package.json > package.json.new sed -E "s/(\s+\"version\": \")[^\"]+(\",)/\10.$(date +%Y%m%d).0+$commitHash\2/"
+mv package.json.new package.json
 git add -A
 
 commitName="$(date +%Y-%m-%d)-$commitHash"
