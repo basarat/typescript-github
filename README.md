@@ -52,7 +52,7 @@ cp ./built/local/* ./bin/
 ./node_modules/.bin/jake release clean local --trace
 
 # Copy output
-cp ./built/local/* ./bin/tsc $typeScriptGithubDirectory/bin/
+cp ./built/local/* ./bin/tsc ./bin/tsserver $typeScriptGithubDirectory/bin/
 
 # Manual verification here
 # ...
