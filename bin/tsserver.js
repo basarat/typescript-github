@@ -11735,6 +11735,7 @@ var ts;
             var expandingFlags;
             var depth = 0;
             var overflow = false;
+            var elaborateErrors = false;
             ts.Debug.assert(relation !== identityRelation || !errorNode, "no error reporting in identity checking");
             var result = isRelatedTo(source, target, errorNode !== undefined, headMessage);
             if (overflow) {
@@ -11743,7 +11744,8 @@ var ts;
             else if (errorInfo) {
                 if (errorInfo.next === undefined) {
                     errorInfo = undefined;
-                    isRelatedTo(source, target, errorNode !== undefined, headMessage, true);
+                    elaborateErrors = true;
+                    isRelatedTo(source, target, errorNode !== undefined, headMessage);
                 }
                 if (containingMessageChain) {
                     errorInfo = ts.concatenateDiagnosticMessageChains(containingMessageChain, errorInfo);
@@ -11754,8 +11756,7 @@ var ts;
             function reportError(message, arg0, arg1, arg2) {
                 errorInfo = ts.chainDiagnosticMessages(errorInfo, message, arg0, arg1, arg2);
             }
-            function isRelatedTo(source, target, reportErrors, headMessage, elaborateErrors) {
-                if (elaborateErrors === void 0) { elaborateErrors = false; }
+            function isRelatedTo(source, target, reportErrors, headMessage) {
                 var result;
                 if (source === target)
                     return -1;
@@ -11825,7 +11826,7 @@ var ts;
                     var reportStructuralErrors = reportErrors && errorInfo === saveErrorInfo;
                     var sourceOrApparentType = relation === identityRelation ? source : getApparentType(source);
                     if (sourceOrApparentType.flags & 48128 && target.flags & 48128 &&
-                        (result = objectTypeRelatedTo(sourceOrApparentType, target, reportStructuralErrors, elaborateErrors))) {
+                        (result = objectTypeRelatedTo(sourceOrApparentType, target, reportStructuralErrors))) {
                         errorInfo = saveErrorInfo;
                         return result;
                     }
@@ -11914,8 +11915,7 @@ var ts;
                     return 0;
                 }
             }
-            function objectTypeRelatedTo(source, target, reportErrors, elaborateErrors) {
-                if (elaborateErrors === void 0) { elaborateErrors = false; }
+            function objectTypeRelatedTo(source, target, reportErrors) {
                 if (overflow) {
                     return 0;
                 }
@@ -19747,17 +19747,16 @@ var ts;
             var decreaseIndent = writer.decreaseIndent;
             var preserveNewLines = compilerOptions.preserveNewLines || false;
             var currentSourceFile;
-            var generatedNameSet;
-            var nodeToGeneratedName;
+            var generatedNameSet = {};
+            var nodeToGeneratedName = [];
             var blockScopedVariableToGeneratedName;
             var computedPropertyNamesToGeneratedNames;
             var extendsEmitted = false;
             var decorateEmitted = false;
-            var tempCount = 0;
+            var tempFlags = 0;
             var tempVariables;
             var tempParameters;
             var externalImports;
-            var predefinedTempsInUse = 0;
             var exportSpecifiers;
             var exportEquals;
             var hasExportStars;
@@ -19791,6 +19790,78 @@ var ts;
                 currentSourceFile = sourceFile;
                 emit(sourceFile);
             }
+            function isUniqueName(name) {
+                return !resolver.hasGlobalName(name) &&
+                    !ts.hasProperty(currentSourceFile.identifiers, name) &&
+                    !ts.hasProperty(generatedNameSet, name);
+            }
+            function makeTempVariableName(flags) {
+                if (flags && !(tempFlags & flags)) {
+                    var name = flags === 268435456 ? "_i" : "_n";
+                    if (isUniqueName(name)) {
+                        tempFlags |= flags;
+                        return name;
+                    }
+                }
+                while (true) {
+                    var count = tempFlags & 268435455;
+                    tempFlags++;
+                    if (count !== 8 && count !== 13) {
+                        var name_12 = count < 26 ? "_" + String.fromCharCode(97 + count) : "_" + (count - 26);
+                        if (isUniqueName(name_12)) {
+                            return name_12;
+                        }
+                    }
+                }
+            }
+            function makeUniqueName(baseName) {
+                if (baseName.charCodeAt(baseName.length - 1) !== 95) {
+                    baseName += "_";
+                }
+                var i = 1;
+                while (true) {
+                    var generatedName = baseName + i;
+                    if (isUniqueName(generatedName)) {
+                        return generatedNameSet[generatedName] = generatedName;
+                    }
+                    i++;
+                }
+            }
+            function assignGeneratedName(node, name) {
+                nodeToGeneratedName[ts.getNodeId(node)] = ts.unescapeIdentifier(name);
+            }
+            function generateNameForFunctionOrClassDeclaration(node) {
+                if (!node.name) {
+                    assignGeneratedName(node, makeUniqueName("default"));
+                }
+            }
+            function generateNameForModuleOrEnum(node) {
+                if (node.name.kind === 65) {
+                    var name_13 = node.name.text;
+                    assignGeneratedName(node, isUniqueLocalName(name_13, node) ? name_13 : makeUniqueName(name_13));
+                }
+            }
+            function generateNameForImportOrExportDeclaration(node) {
+                var expr = ts.getExternalModuleName(node);
+                var baseName = expr.kind === 8 ?
+                    ts.escapeIdentifier(ts.makeIdentifierFromModuleName(expr.text)) : "module";
+                assignGeneratedName(node, makeUniqueName(baseName));
+            }
+            function generateNameForImportDeclaration(node) {
+                if (node.importClause) {
+                    generateNameForImportOrExportDeclaration(node);
+                }
+            }
+            function generateNameForExportDeclaration(node) {
+                if (node.moduleSpecifier) {
+                    generateNameForImportOrExportDeclaration(node);
+                }
+            }
+            function generateNameForExportAssignment(node) {
+                if (node.expression && node.expression.kind !== 65) {
+                    assignGeneratedName(node, makeUniqueName("default"));
+                }
+            }
             function generateNameForNode(node) {
                 switch (node.kind) {
                     case 197:
@@ -19813,123 +19884,14 @@ var ts;
                     case 211:
                         generateNameForExportAssignment(node);
                         break;
-                    case 224:
-                    case 203:
-                        ts.forEach(node.statements, generateNameForNode);
-                        break;
-                }
-            }
-            function isUniqueName(name) {
-                return !resolver.hasGlobalName(name) &&
-                    !ts.hasProperty(currentSourceFile.identifiers, name) &&
-                    (!generatedNameSet || !ts.hasProperty(generatedNameSet, name));
-            }
-            function nameConflictsWithSomeTempVariable(name) {
-                if (name.length < 2 || name.charCodeAt(0) !== 95) {
-                    return false;
-                }
-                if (name === "_i") {
-                    return !!(predefinedTempsInUse & 1);
-                }
-                if (name === "_n") {
-                    return !!(predefinedTempsInUse & 2);
-                }
-                if (name.length === 2 && name.charCodeAt(1) >= 97 && name.charCodeAt(1) <= 122) {
-                    var n = name.charCodeAt(1) - 97;
-                    return n < tempCount;
-                }
-                else {
-                    var n = +name.substring(1);
-                    return !isNaN(n) && n >= 0 && n < (tempCount - 26);
-                }
-            }
-            function makeTempVariableName(location, tempVariableKind) {
-                var tempName;
-                if (tempVariableKind !== 0 && !(predefinedTempsInUse & tempVariableKind)) {
-                    tempName = tempVariableKind === 1 ? "_i" : "_n";
-                    if (!resolver.resolvesToSomeValue(location, tempName)) {
-                        predefinedTempsInUse |= tempVariableKind;
-                        return tempName;
-                    }
-                }
-                do {
-                    var char = 97 + tempCount;
-                    if (char !== 105 && char !== 110) {
-                        if (tempCount < 26) {
-                            tempName = "_" + String.fromCharCode(char);
-                        }
-                        else {
-                            tempName = "_" + (tempCount - 26);
-                        }
-                    }
-                    tempCount++;
-                } while (resolver.resolvesToSomeValue(location, tempName));
-                return tempName;
-            }
-            function makeUniqueName(baseName) {
-                ts.Debug.assert(!!baseName);
-                if (baseName.charCodeAt(baseName.length - 1) !== 95) {
-                    baseName += "_";
-                }
-                var i = 1;
-                var generatedName;
-                while (true) {
-                    generatedName = baseName + i;
-                    if (isUniqueName(generatedName)) {
-                        break;
-                    }
-                    i++;
-                }
-                if (!generatedNameSet) {
-                    generatedNameSet = {};
-                }
-                return generatedNameSet[generatedName] = generatedName;
-            }
-            function renameNode(node, name) {
-                var nodeId = ts.getNodeId(node);
-                if (!nodeToGeneratedName) {
-                    nodeToGeneratedName = [];
-                }
-                return nodeToGeneratedName[nodeId] = ts.unescapeIdentifier(name);
-            }
-            function generateNameForFunctionOrClassDeclaration(node) {
-                if (!node.name) {
-                    renameNode(node, makeUniqueName("default"));
-                }
-            }
-            function generateNameForModuleOrEnum(node) {
-                if (node.name.kind === 65) {
-                    var name_12 = node.name.text;
-                    renameNode(node, isUniqueLocalName(name_12, node) ? name_12 : makeUniqueName(name_12));
-                }
-            }
-            function generateNameForImportOrExportDeclaration(node) {
-                var expr = ts.getExternalModuleName(node);
-                var baseName = expr.kind === 8 ?
-                    ts.escapeIdentifier(ts.makeIdentifierFromModuleName(expr.text)) : "module";
-                renameNode(node, makeUniqueName(baseName));
-            }
-            function generateNameForImportDeclaration(node) {
-                if (node.importClause) {
-                    generateNameForImportOrExportDeclaration(node);
-                }
-            }
-            function generateNameForExportDeclaration(node) {
-                if (node.moduleSpecifier) {
-                    generateNameForImportOrExportDeclaration(node);
-                }
-            }
-            function generateNameForExportAssignment(node) {
-                if (node.expression && node.expression.kind !== 65) {
-                    renameNode(node, makeUniqueName("default"));
                 }
             }
             function getGeneratedNameForNode(node) {
                 var nodeId = ts.getNodeId(node);
-                if (!nodeToGeneratedName || !nodeToGeneratedName[nodeId]) {
+                if (!nodeToGeneratedName[nodeId]) {
                     generateNameForNode(node);
                 }
-                return nodeToGeneratedName ? nodeToGeneratedName[nodeId] : undefined;
+                return nodeToGeneratedName[nodeId];
             }
             function initializeEmitterWithSourceMaps() {
                 var sourceMapDir;
@@ -20055,8 +20017,8 @@ var ts;
                         if (scopeName) {
                             var parentIndex = getSourceMapNameIndex();
                             if (parentIndex !== -1) {
-                                var name_13 = node.name;
-                                if (!name_13 || name_13.kind !== 127) {
+                                var name_14 = node.name;
+                                if (!name_14 || name_14.kind !== 127) {
                                     scopeName = "." + scopeName;
                                 }
                                 scopeName = sourceMapData.sourceMapNames[parentIndex] + scopeName;
@@ -20083,9 +20045,9 @@ var ts;
                         node.kind === 198 ||
                         node.kind === 201) {
                         if (node.name) {
-                            var name_14 = node.name;
-                            scopeName = name_14.kind === 127
-                                ? ts.getTextOfNode(name_14)
+                            var name_15 = node.name;
+                            scopeName = name_15.kind === 127
+                                ? ts.getTextOfNode(name_15)
                                 : node.name.text;
                         }
                         recordScopeNameStart(scopeName);
@@ -20192,10 +20154,9 @@ var ts;
             function writeJavaScriptFile(emitOutput, writeByteOrderMark) {
                 ts.writeFile(host, diagnostics, jsFilePath, emitOutput, writeByteOrderMark);
             }
-            function createTempVariable(location, tempVariableKind) {
-                if (tempVariableKind === void 0) { tempVariableKind = 0; }
+            function createTempVariable(flags) {
                 var result = ts.createSynthesizedNode(65);
-                result.text = makeTempVariableName(location, tempVariableKind);
+                result.text = makeTempVariableName(flags);
                 return result;
             }
             function recordTempDeclaration(name) {
@@ -20204,8 +20165,8 @@ var ts;
                 }
                 tempVariables.push(name);
             }
-            function createAndRecordTempVariable(location, tempVariableKind) {
-                var temp = createTempVariable(location, tempVariableKind);
+            function createAndRecordTempVariable(flags) {
+                var temp = createTempVariable(flags);
                 recordTempDeclaration(temp);
                 return temp;
             }
@@ -20397,7 +20358,7 @@ var ts;
                 write("]");
             }
             function emitDownlevelTaggedTemplate(node) {
-                var tempVariable = createAndRecordTempVariable(node);
+                var tempVariable = createAndRecordTempVariable(0);
                 write("(");
                 emit(tempVariable);
                 write(" = ");
@@ -20520,7 +20481,7 @@ var ts;
                             write(generatedName);
                             return;
                         }
-                        var generatedVariable = createTempVariable(node);
+                        var generatedVariable = createTempVariable(0);
                         generatedName = generatedVariable.text;
                         recordTempDeclaration(generatedVariable);
                         computedPropertyNamesToGeneratedNames[node.id] = generatedName;
@@ -20740,7 +20701,7 @@ var ts;
                 return emit(parenthesizedObjectLiteral);
             }
             function createDownlevelObjectLiteralWithComputedProperties(originalObjectLiteral, firstComputedPropertyIndex) {
-                var tempVar = createAndRecordTempVariable(originalObjectLiteral);
+                var tempVar = createAndRecordTempVariable(0);
                 var initialObjectLiteral = ts.createSynthesizedNode(154);
                 initialObjectLiteral.properties = originalObjectLiteral.properties.slice(0, firstComputedPropertyIndex);
                 initialObjectLiteral.flags |= 512;
@@ -20807,8 +20768,8 @@ var ts;
             }
             function createNodeArray() {
                 var elements = [];
-                for (var _i = 0; _i < arguments.length; _i++) {
-                    elements[_i - 0] = arguments[_i];
+                for (var _a = 0; _a < arguments.length; _a++) {
+                    elements[_a - 0] = arguments[_a];
                 }
                 var result = elements;
                 result.pos = -1;
@@ -21000,7 +20961,7 @@ var ts;
                     emit(node);
                     return node;
                 }
-                var temp = createAndRecordTempVariable(node);
+                var temp = createAndRecordTempVariable(0);
                 write("(");
                 emit(temp);
                 write(" = ");
@@ -21369,9 +21330,9 @@ var ts;
                 write(" ");
                 endPos = emitToken(16, endPos);
                 var rhsIsIdentifier = node.expression.kind === 65;
-                var counter = createTempVariable(node, 1);
-                var rhsReference = rhsIsIdentifier ? node.expression : createTempVariable(node);
-                var cachedLength = compilerOptions.cacheDownlevelForOfLength ? createTempVariable(node, 2) : undefined;
+                var counter = createTempVariable(268435456);
+                var rhsReference = rhsIsIdentifier ? node.expression : createTempVariable(0);
+                var cachedLength = compilerOptions.cacheDownlevelForOfLength ? createTempVariable(536870912) : undefined;
                 emitStart(node.expression);
                 write("var ");
                 emitNodeWithoutSourceMap(counter);
@@ -21430,7 +21391,7 @@ var ts;
                         }
                     }
                     else {
-                        emitNodeWithoutSourceMap(createTempVariable(node));
+                        emitNodeWithoutSourceMap(createTempVariable(0));
                         write(" = ");
                         emitNodeWithoutSourceMap(rhsIterationValue);
                     }
@@ -21605,8 +21566,8 @@ var ts;
             }
             function emitExportMemberAssignments(name) {
                 if (!exportEquals && exportSpecifiers && ts.hasProperty(exportSpecifiers, name.text)) {
-                    for (var _i = 0, _a = exportSpecifiers[name.text], _n = _a.length; _i < _n; _i++) {
-                        var specifier = _a[_i];
+                    for (var _a = 0, _b = exportSpecifiers[name.text], _c = _b.length; _a < _c; _a++) {
+                        var specifier = _b[_a];
                         writeLine();
                         emitStart(specifier.name);
                         emitContainingModuleName(specifier);
@@ -21645,7 +21606,7 @@ var ts;
                 }
                 function ensureIdentifier(expr) {
                     if (expr.kind !== 65) {
-                        var identifier = createTempVariable(lowestNonSynthesizedAncestor || root);
+                        var identifier = createTempVariable(0);
                         if (!isDeclaration) {
                             recordTempDeclaration(identifier);
                         }
@@ -21701,8 +21662,8 @@ var ts;
                     if (properties.length !== 1) {
                         value = ensureIdentifier(value);
                     }
-                    for (var _i = 0, _n = properties.length; _i < _n; _i++) {
-                        var p = properties[_i];
+                    for (var _a = 0, _b = properties.length; _a < _b; _a++) {
+                        var p = properties[_a];
                         if (p.kind === 221 || p.kind === 222) {
                             var propName = (p.name);
                             emitDestructuringAssignment(p.initializer || propName, createPropertyAccess(value, propName));
@@ -21870,9 +21831,7 @@ var ts;
                 var parent = blockScopeContainer.kind === 224
                     ? blockScopeContainer
                     : blockScopeContainer.parent;
-                var hasConflictsInEnclosingScope = resolver.resolvesToSomeValue(parent, node.text) ||
-                    nameConflictsWithSomeTempVariable(node.text);
-                if (hasConflictsInEnclosingScope) {
+                if (resolver.resolvesToSomeValue(parent, node.text)) {
                     var variableId = resolver.getBlockScopedVariableId(node);
                     if (!blockScopedVariableToGeneratedName) {
                         blockScopedVariableToGeneratedName = [];
@@ -21903,12 +21862,12 @@ var ts;
             function emitParameter(node) {
                 if (languageVersion < 2) {
                     if (ts.isBindingPattern(node.name)) {
-                        var name_15 = createTempVariable(node);
+                        var name_16 = createTempVariable(0);
                         if (!tempParameters) {
                             tempParameters = [];
                         }
-                        tempParameters.push(name_15);
-                        emit(name_15);
+                        tempParameters.push(name_16);
+                        emit(name_16);
                     }
                     else {
                         emit(node.name);
@@ -21955,7 +21914,7 @@ var ts;
                 if (languageVersion < 2 && ts.hasRestParameters(node)) {
                     var restIndex = node.parameters.length - 1;
                     var restParam = node.parameters[restIndex];
-                    var tempName = createTempVariable(node, 1).text;
+                    var tempName = createTempVariable(268435456).text;
                     writeLine();
                     emitLeadingComments(restParam);
                     emitStart(restParam);
@@ -22067,14 +22026,12 @@ var ts;
                 emitSignatureParameters(node);
             }
             function emitSignatureAndBody(node) {
-                var saveTempCount = tempCount;
+                var saveTempFlags = tempFlags;
                 var saveTempVariables = tempVariables;
                 var saveTempParameters = tempParameters;
-                var savePredefinedTempsInUse = predefinedTempsInUse;
-                tempCount = 0;
+                tempFlags = 0;
                 tempVariables = undefined;
                 tempParameters = undefined;
-                predefinedTempsInUse = 0;
                 if (shouldEmitAsArrowFunction(node)) {
                     emitSignatureParametersForArrow(node);
                     write(" =>");
@@ -22094,8 +22051,7 @@ var ts;
                 if (!isES6ExportedDeclaration(node)) {
                     emitExportMemberAssignment(node);
                 }
-                predefinedTempsInUse = savePredefinedTempsInUse;
-                tempCount = saveTempCount;
+                tempFlags = saveTempFlags;
                 tempVariables = saveTempVariables;
                 tempParameters = saveTempParameters;
             }
@@ -22163,8 +22119,8 @@ var ts;
                 decreaseIndent();
                 var preambleEmitted = writer.getTextPos() !== initialTextPos;
                 if (preserveNewLines && !preambleEmitted && nodeEndIsOnSameLineAsNodeStart(body, body)) {
-                    for (var _i = 0, _a = body.statements, _n = _a.length; _i < _n; _i++) {
-                        var statement = _a[_i];
+                    for (var _a = 0, _b = body.statements, _c = _b.length; _a < _c; _a++) {
+                        var statement = _b[_a];
                         write(" ");
                         emit(statement);
                     }
@@ -22319,8 +22275,8 @@ var ts;
                 });
             }
             function emitMemberFunctionsForES6AndHigher(node) {
-                for (var _i = 0, _a = node.members, _n = _a.length; _i < _n; _i++) {
-                    var member = _a[_i];
+                for (var _a = 0, _b = node.members, _c = _b.length; _a < _c; _a++) {
+                    var member = _b[_a];
                     if ((member.kind === 134 || node.kind === 133) && !member.body) {
                         emitOnlyPinnedOrTripleSlashComments(member);
                     }
@@ -22345,14 +22301,12 @@ var ts;
                 }
             }
             function emitConstructor(node, baseTypeNode) {
-                var saveTempCount = tempCount;
+                var saveTempFlags = tempFlags;
                 var saveTempVariables = tempVariables;
                 var saveTempParameters = tempParameters;
-                var savePredefinedTempsInUse = predefinedTempsInUse;
-                tempCount = 0;
+                tempFlags = 0;
                 tempVariables = undefined;
                 tempParameters = undefined;
-                predefinedTempsInUse = 0;
                 var hasInstancePropertyWithInitializer = false;
                 ts.forEach(node.members, function (member) {
                     if (member.kind === 135 && !member.body) {
@@ -22441,8 +22395,7 @@ var ts;
                 if (ctor) {
                     emitTrailingComments(ctor);
                 }
-                predefinedTempsInUse = savePredefinedTempsInUse;
-                tempCount = saveTempCount;
+                tempFlags = saveTempFlags;
                 tempVariables = saveTempVariables;
                 tempParameters = saveTempParameters;
             }
@@ -22530,11 +22483,11 @@ var ts;
                     write("_super");
                 }
                 write(") {");
-                var saveTempCount = tempCount;
+                var saveTempFlags = tempFlags;
                 var saveTempVariables = tempVariables;
                 var saveTempParameters = tempParameters;
                 var saveComputedPropertyNamesToGeneratedNames = computedPropertyNamesToGeneratedNames;
-                tempCount = 0;
+                tempFlags = 0;
                 tempVariables = undefined;
                 tempParameters = undefined;
                 computedPropertyNamesToGeneratedNames = undefined;
@@ -22561,7 +22514,7 @@ var ts;
                 });
                 write(";");
                 emitTempDeclarations(true);
-                tempCount = saveTempCount;
+                tempFlags = saveTempFlags;
                 tempVariables = saveTempVariables;
                 tempParameters = saveTempParameters;
                 computedPropertyNamesToGeneratedNames = saveComputedPropertyNamesToGeneratedNames;
@@ -22828,15 +22781,12 @@ var ts;
                 emitEnd(node.name);
                 write(") ");
                 if (node.body.kind === 203) {
-                    var saveTempCount = tempCount;
+                    var saveTempFlags = tempFlags;
                     var saveTempVariables = tempVariables;
-                    var savePredefinedTempsInUse = predefinedTempsInUse;
-                    tempCount = 0;
+                    tempFlags = 0;
                     tempVariables = undefined;
-                    predefinedTempsInUse = 0;
                     emit(node.body);
-                    predefinedTempsInUse = savePredefinedTempsInUse;
-                    tempCount = saveTempCount;
+                    tempFlags = saveTempFlags;
                     tempVariables = saveTempVariables;
                 }
                 else {
@@ -23028,8 +22978,8 @@ var ts;
                                 emitRequire(ts.getExternalModuleName(node));
                                 write(";");
                             }
-                            for (var _i = 0, _a = node.exportClause.elements, _n = _a.length; _i < _n; _i++) {
-                                var specifier = _a[_i];
+                            for (var _a = 0, _b = node.exportClause.elements, _c = _b.length; _a < _c; _a++) {
+                                var specifier = _b[_a];
                                 if (resolver.isValueAliasDeclaration(specifier)) {
                                     writeLine();
                                     emitStart(specifier);
@@ -23083,8 +23033,8 @@ var ts;
             function emitExportOrImportSpecifierList(specifiers, shouldEmit) {
                 ts.Debug.assert(languageVersion >= 2);
                 var needsComma = false;
-                for (var _i = 0, _n = specifiers.length; _i < _n; _i++) {
-                    var specifier = specifiers[_i];
+                for (var _a = 0, _b = specifiers.length; _a < _b; _a++) {
+                    var specifier = specifiers[_a];
                     if (shouldEmit(specifier)) {
                         if (needsComma) {
                             write(", ");
@@ -23130,8 +23080,8 @@ var ts;
                 exportSpecifiers = {};
                 exportEquals = undefined;
                 hasExportStars = false;
-                for (var _i = 0, _a = sourceFile.statements, _n = _a.length; _i < _n; _i++) {
-                    var node = _a[_i];
+                for (var _a = 0, _b = sourceFile.statements, _c = _b.length; _a < _c; _a++) {
+                    var node = _b[_a];
                     switch (node.kind) {
                         case 206:
                             if (!node.importClause ||
@@ -23155,10 +23105,10 @@ var ts;
                                 }
                             }
                             else {
-                                for (var _b = 0, _c = node.exportClause.elements, _d = _c.length; _b < _d; _b++) {
-                                    var specifier = _c[_b];
-                                    var name_16 = (specifier.propertyName || specifier.name).text;
-                                    (exportSpecifiers[name_16] || (exportSpecifiers[name_16] = [])).push(specifier);
+                                for (var _d = 0, _e = node.exportClause.elements, _f = _e.length; _d < _f; _d++) {
+                                    var specifier = _e[_d];
+                                    var name_17 = (specifier.propertyName || specifier.name).text;
+                                    (exportSpecifiers[name_17] || (exportSpecifiers[name_17] = [])).push(specifier);
                                 }
                             }
                             break;
@@ -23204,8 +23154,8 @@ var ts;
                     write("\"" + node.amdModuleName + "\", ");
                 }
                 write("[\"require\", \"exports\"");
-                for (var _i = 0, _n = externalImports.length; _i < _n; _i++) {
-                    var importNode = externalImports[_i];
+                for (var _a = 0, _b = externalImports.length; _a < _b; _a++) {
+                    var importNode = externalImports[_a];
                     write(", ");
                     var moduleName = ts.getExternalModuleName(importNode);
                     if (moduleName.kind === 8) {
@@ -23215,15 +23165,15 @@ var ts;
                         write("\"\"");
                     }
                 }
-                for (var _a = 0, _b = node.amdDependencies, _c = _b.length; _a < _c; _a++) {
-                    var amdDependency = _b[_a];
+                for (var _c = 0, _d = node.amdDependencies, _e = _d.length; _c < _e; _c++) {
+                    var amdDependency = _d[_c];
                     var text = "\"" + amdDependency.path + "\"";
                     write(", ");
                     write(text);
                 }
                 write("], function (require, exports");
-                for (var _d = 0, _e = externalImports.length; _d < _e; _d++) {
-                    var importNode = externalImports[_d];
+                for (var _f = 0, _g = externalImports.length; _f < _g; _f++) {
+                    var importNode = externalImports[_f];
                     write(", ");
                     var namespaceDeclaration = getNamespaceDeclarationNode(importNode);
                     if (namespaceDeclaration && !isDefaultImport(importNode)) {
@@ -23233,8 +23183,8 @@ var ts;
                         write(getGeneratedNameForNode(importNode));
                     }
                 }
-                for (var _f = 0, _g = node.amdDependencies, _h = _g.length; _f < _h; _f++) {
-                    var amdDependency = _g[_f];
+                for (var _h = 0, _j = node.amdDependencies, _k = _j.length; _h < _k; _h++) {
+                    var amdDependency = _j[_h];
                     if (amdDependency.name) {
                         write(", ");
                         write(amdDependency.name);
@@ -24956,9 +24906,9 @@ var ts;
                     case 195:
                     case 152:
                         var variableDeclarationNode;
-                        var name_17;
+                        var name_18;
                         if (node.kind === 152) {
-                            name_17 = node.name;
+                            name_18 = node.name;
                             variableDeclarationNode = node;
                             while (variableDeclarationNode && variableDeclarationNode.kind !== 195) {
                                 variableDeclarationNode = variableDeclarationNode.parent;
@@ -24968,16 +24918,16 @@ var ts;
                         else {
                             ts.Debug.assert(!ts.isBindingPattern(node.name));
                             variableDeclarationNode = node;
-                            name_17 = node.name;
+                            name_18 = node.name;
                         }
                         if (ts.isConst(variableDeclarationNode)) {
-                            return createItem(node, getTextOfNode(name_17), ts.ScriptElementKind.constElement);
+                            return createItem(node, getTextOfNode(name_18), ts.ScriptElementKind.constElement);
                         }
                         else if (ts.isLet(variableDeclarationNode)) {
-                            return createItem(node, getTextOfNode(name_17), ts.ScriptElementKind.letElement);
+                            return createItem(node, getTextOfNode(name_18), ts.ScriptElementKind.letElement);
                         }
                         else {
-                            return createItem(node, getTextOfNode(name_17), ts.ScriptElementKind.variableElement);
+                            return createItem(node, getTextOfNode(name_18), ts.ScriptElementKind.variableElement);
                         }
                     case 135:
                         return createItem(node, "constructor", ts.ScriptElementKind.constructorImplementationElement);
@@ -27045,9 +26995,9 @@ var ts;
             }
             Rules.prototype.getRuleName = function (rule) {
                 var o = this;
-                for (var name_18 in o) {
-                    if (o[name_18] === rule) {
-                        return name_18;
+                for (var name_19 in o) {
+                    if (o[name_19] === rule) {
+                        return name_19;
                     }
                 }
                 throw new Error("Unknown rule");
@@ -32047,17 +31997,17 @@ var ts;
                 if (isNameOfPropertyAssignment(node)) {
                     var objectLiteral = node.parent.parent;
                     var contextualType = typeInfoResolver.getContextualType(objectLiteral);
-                    var name_19 = node.text;
+                    var name_20 = node.text;
                     if (contextualType) {
                         if (contextualType.flags & 16384) {
-                            var unionProperty = contextualType.getProperty(name_19);
+                            var unionProperty = contextualType.getProperty(name_20);
                             if (unionProperty) {
                                 return [unionProperty];
                             }
                             else {
                                 var result_3 = [];
                                 ts.forEach(contextualType.types, function (t) {
-                                    var symbol = t.getProperty(name_19);
+                                    var symbol = t.getProperty(name_20);
                                     if (symbol) {
                                         result_3.push(symbol);
                                     }
@@ -32066,7 +32016,7 @@ var ts;
                             }
                         }
                         else {
-                            var symbol_1 = contextualType.getProperty(name_19);
+                            var symbol_1 = contextualType.getProperty(name_20);
                             if (symbol_1) {
                                 return [symbol_1];
                             }
@@ -33086,11 +33036,833 @@ var ts;
 /// <reference path="..\compiler\commandLineParser.ts" />
 /// <reference path="..\services\services.ts" />
 /// <reference path="node.d.ts" />
+/// <reference path="protocol.d.ts" />
+/// <reference path="editorServices.ts" />
+var ts;
+(function (ts) {
+    var server;
+    (function (server) {
+        var spaceCache = [];
+        function generateSpaces(n) {
+            if (!spaceCache[n]) {
+                var strBuilder = "";
+                for (var i = 0; i < n; i++) {
+                    strBuilder += " ";
+                }
+                spaceCache[n] = strBuilder;
+            }
+            return spaceCache[n];
+        }
+        server.generateSpaces = generateSpaces;
+        function compareNumber(a, b) {
+            if (a < b) {
+                return -1;
+            }
+            else if (a == b) {
+                return 0;
+            }
+            else
+                return 1;
+        }
+        function compareFileStart(a, b) {
+            if (a.file < b.file) {
+                return -1;
+            }
+            else if (a.file == b.file) {
+                var n = compareNumber(a.start.line, b.start.line);
+                if (n == 0) {
+                    return compareNumber(a.start.offset, b.start.offset);
+                }
+                else
+                    return n;
+            }
+            else {
+                return 1;
+            }
+        }
+        function formatDiag(fileName, project, diag) {
+            return {
+                start: project.compilerService.host.positionToLineOffset(fileName, diag.start),
+                end: project.compilerService.host.positionToLineOffset(fileName, diag.start + diag.length),
+                text: ts.flattenDiagnosticMessageText(diag.messageText, "\n")
+            };
+        }
+        function allEditsBeforePos(edits, pos) {
+            for (var i = 0, len = edits.length; i < len; i++) {
+                if (ts.textSpanEnd(edits[i].span) >= pos) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        var CommandNames;
+        (function (CommandNames) {
+            CommandNames.Change = "change";
+            CommandNames.Close = "close";
+            CommandNames.Completions = "completions";
+            CommandNames.CompletionDetails = "completionEntryDetails";
+            CommandNames.SignatureHelp = "signatureHelp";
+            CommandNames.Configure = "configure";
+            CommandNames.Definition = "definition";
+            CommandNames.Format = "format";
+            CommandNames.Formatonkey = "formatonkey";
+            CommandNames.Geterr = "geterr";
+            CommandNames.NavBar = "navbar";
+            CommandNames.Navto = "navto";
+            CommandNames.Open = "open";
+            CommandNames.Quickinfo = "quickinfo";
+            CommandNames.References = "references";
+            CommandNames.Reload = "reload";
+            CommandNames.Rename = "rename";
+            CommandNames.Saveto = "saveto";
+            CommandNames.Brace = "brace";
+            CommandNames.Unknown = "unknown";
+        })(CommandNames = server.CommandNames || (server.CommandNames = {}));
+        var Errors;
+        (function (Errors) {
+            Errors.NoProject = new Error("No Project.");
+        })(Errors || (Errors = {}));
+        var Session = (function () {
+            function Session(host, logger) {
+                var _this = this;
+                this.host = host;
+                this.logger = logger;
+                this.pendingOperation = false;
+                this.fileHash = {};
+                this.nextFileId = 1;
+                this.changeSeq = 0;
+                this.projectService =
+                    new server.ProjectService(host, logger, function (eventName, project, fileName) {
+                        _this.handleEvent(eventName, project, fileName);
+                    });
+            }
+            Session.prototype.handleEvent = function (eventName, project, fileName) {
+                var _this = this;
+                if (eventName == "context") {
+                    this.projectService.log("got context event, updating diagnostics for" + fileName, "Info");
+                    this.updateErrorCheck([{ fileName: fileName, project: project }], this.changeSeq, function (n) { return n == _this.changeSeq; }, 100);
+                }
+            };
+            Session.prototype.logError = function (err, cmd) {
+                var typedErr = err;
+                var msg = "Exception on executing command " + cmd;
+                if (typedErr.message) {
+                    msg += ":\n" + typedErr.message;
+                    if (typedErr.stack) {
+                        msg += "\n" + typedErr.stack;
+                    }
+                }
+                this.projectService.log(msg);
+            };
+            Session.prototype.sendLineToClient = function (line) {
+                this.host.write(line + this.host.newLine);
+            };
+            Session.prototype.send = function (msg) {
+                var json = JSON.stringify(msg);
+                if (this.logger.isVerbose()) {
+                    this.logger.info(msg.type + ": " + json);
+                }
+                this.sendLineToClient('Content-Length: ' + (1 + Buffer.byteLength(json, 'utf8')) +
+                    '\r\n\r\n' + json);
+            };
+            Session.prototype.event = function (info, eventName) {
+                var ev = {
+                    seq: 0,
+                    type: "event",
+                    event: eventName,
+                    body: info
+                };
+                this.send(ev);
+            };
+            Session.prototype.response = function (info, cmdName, reqSeq, errorMsg) {
+                if (reqSeq === void 0) { reqSeq = 0; }
+                var res = {
+                    seq: 0,
+                    type: "response",
+                    command: cmdName,
+                    request_seq: reqSeq,
+                    success: !errorMsg
+                };
+                if (!errorMsg) {
+                    res.body = info;
+                }
+                else {
+                    res.message = errorMsg;
+                }
+                this.send(res);
+            };
+            Session.prototype.output = function (body, commandName, requestSequence, errorMessage) {
+                if (requestSequence === void 0) { requestSequence = 0; }
+                this.response(body, commandName, requestSequence, errorMessage);
+            };
+            Session.prototype.semanticCheck = function (file, project) {
+                try {
+                    var diags = project.compilerService.languageService.getSemanticDiagnostics(file);
+                    if (diags) {
+                        var bakedDiags = diags.map(function (diag) { return formatDiag(file, project, diag); });
+                        this.event({ file: file, diagnostics: bakedDiags }, "semanticDiag");
+                    }
+                }
+                catch (err) {
+                    this.logError(err, "semantic check");
+                }
+            };
+            Session.prototype.syntacticCheck = function (file, project) {
+                try {
+                    var diags = project.compilerService.languageService.getSyntacticDiagnostics(file);
+                    if (diags) {
+                        var bakedDiags = diags.map(function (diag) { return formatDiag(file, project, diag); });
+                        this.event({ file: file, diagnostics: bakedDiags }, "syntaxDiag");
+                    }
+                }
+                catch (err) {
+                    this.logError(err, "syntactic check");
+                }
+            };
+            Session.prototype.errorCheck = function (file, project) {
+                this.syntacticCheck(file, project);
+                this.semanticCheck(file, project);
+            };
+            Session.prototype.updateProjectStructure = function (seq, matchSeq, ms) {
+                var _this = this;
+                if (ms === void 0) { ms = 1500; }
+                setTimeout(function () {
+                    if (matchSeq(seq)) {
+                        _this.projectService.updateProjectStructure();
+                    }
+                }, ms);
+            };
+            Session.prototype.updateErrorCheck = function (checkList, seq, matchSeq, ms, followMs) {
+                var _this = this;
+                if (ms === void 0) { ms = 1500; }
+                if (followMs === void 0) { followMs = 200; }
+                if (followMs > ms) {
+                    followMs = ms;
+                }
+                if (this.errorTimer) {
+                    clearTimeout(this.errorTimer);
+                }
+                if (this.immediateId) {
+                    clearImmediate(this.immediateId);
+                    this.immediateId = undefined;
+                }
+                var index = 0;
+                var checkOne = function () {
+                    if (matchSeq(seq)) {
+                        var checkSpec = checkList[index++];
+                        if (checkSpec.project.getSourceFileFromName(checkSpec.fileName, true)) {
+                            _this.syntacticCheck(checkSpec.fileName, checkSpec.project);
+                            _this.immediateId = setImmediate(function () {
+                                _this.semanticCheck(checkSpec.fileName, checkSpec.project);
+                                _this.immediateId = undefined;
+                                if (checkList.length > index) {
+                                    _this.errorTimer = setTimeout(checkOne, followMs);
+                                }
+                                else {
+                                    _this.errorTimer = undefined;
+                                }
+                            });
+                        }
+                    }
+                };
+                if ((checkList.length > index) && (matchSeq(seq))) {
+                    this.errorTimer = setTimeout(checkOne, ms);
+                }
+            };
+            Session.prototype.getDefinition = function (line, offset, fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var definitions = compilerService.languageService.getDefinitionAtPosition(file, position);
+                if (!definitions) {
+                    return undefined;
+                }
+                return definitions.map(function (def) { return ({
+                    file: def.fileName,
+                    start: compilerService.host.positionToLineOffset(def.fileName, def.textSpan.start),
+                    end: compilerService.host.positionToLineOffset(def.fileName, ts.textSpanEnd(def.textSpan))
+                }); });
+            };
+            Session.prototype.getRenameLocations = function (line, offset, fileName, findInComments, findInStrings) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var renameInfo = compilerService.languageService.getRenameInfo(file, position);
+                if (!renameInfo) {
+                    return undefined;
+                }
+                if (!renameInfo.canRename) {
+                    return {
+                        info: renameInfo,
+                        locs: []
+                    };
+                }
+                var renameLocations = compilerService.languageService.findRenameLocations(file, position, findInStrings, findInComments);
+                if (!renameLocations) {
+                    return undefined;
+                }
+                var bakedRenameLocs = renameLocations.map(function (location) { return ({
+                    file: location.fileName,
+                    start: compilerService.host.positionToLineOffset(location.fileName, location.textSpan.start),
+                    end: compilerService.host.positionToLineOffset(location.fileName, ts.textSpanEnd(location.textSpan))
+                }); }).sort(function (a, b) {
+                    if (a.file < b.file) {
+                        return -1;
+                    }
+                    else if (a.file > b.file) {
+                        return 1;
+                    }
+                    else {
+                        if (a.start.line < b.start.line) {
+                            return 1;
+                        }
+                        else if (a.start.line > b.start.line) {
+                            return -1;
+                        }
+                        else {
+                            return b.start.offset - a.start.offset;
+                        }
+                    }
+                }).reduce(function (accum, cur) {
+                    var curFileAccum;
+                    if (accum.length > 0) {
+                        curFileAccum = accum[accum.length - 1];
+                        if (curFileAccum.file != cur.file) {
+                            curFileAccum = undefined;
+                        }
+                    }
+                    if (!curFileAccum) {
+                        curFileAccum = { file: cur.file, locs: [] };
+                        accum.push(curFileAccum);
+                    }
+                    curFileAccum.locs.push({ start: cur.start, end: cur.end });
+                    return accum;
+                }, []);
+                return { info: renameInfo, locs: bakedRenameLocs };
+            };
+            Session.prototype.getReferences = function (line, offset, fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var references = compilerService.languageService.getReferencesAtPosition(file, position);
+                if (!references) {
+                    return undefined;
+                }
+                var nameInfo = compilerService.languageService.getQuickInfoAtPosition(file, position);
+                if (!nameInfo) {
+                    return undefined;
+                }
+                var displayString = ts.displayPartsToString(nameInfo.displayParts);
+                var nameSpan = nameInfo.textSpan;
+                var nameColStart = compilerService.host.positionToLineOffset(file, nameSpan.start).offset;
+                var nameText = compilerService.host.getScriptSnapshot(file).getText(nameSpan.start, ts.textSpanEnd(nameSpan));
+                var bakedRefs = references.map(function (ref) {
+                    var start = compilerService.host.positionToLineOffset(ref.fileName, ref.textSpan.start);
+                    var refLineSpan = compilerService.host.lineToTextSpan(ref.fileName, start.line - 1);
+                    var snap = compilerService.host.getScriptSnapshot(ref.fileName);
+                    var lineText = snap.getText(refLineSpan.start, ts.textSpanEnd(refLineSpan)).replace(/\r|\n/g, "");
+                    return {
+                        file: ref.fileName,
+                        start: start,
+                        lineText: lineText,
+                        end: compilerService.host.positionToLineOffset(ref.fileName, ts.textSpanEnd(ref.textSpan)),
+                        isWriteAccess: ref.isWriteAccess
+                    };
+                }).sort(compareFileStart);
+                return {
+                    refs: bakedRefs,
+                    symbolName: nameText,
+                    symbolStartOffset: nameColStart,
+                    symbolDisplayString: displayString
+                };
+            };
+            Session.prototype.openClientFile = function (fileName) {
+                var file = ts.normalizePath(fileName);
+                this.projectService.openClientFile(file);
+            };
+            Session.prototype.getQuickInfo = function (line, offset, fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var quickInfo = compilerService.languageService.getQuickInfoAtPosition(file, position);
+                if (!quickInfo) {
+                    return undefined;
+                }
+                var displayString = ts.displayPartsToString(quickInfo.displayParts);
+                var docString = ts.displayPartsToString(quickInfo.documentation);
+                return {
+                    kind: quickInfo.kind,
+                    kindModifiers: quickInfo.kindModifiers,
+                    start: compilerService.host.positionToLineOffset(file, quickInfo.textSpan.start),
+                    end: compilerService.host.positionToLineOffset(file, ts.textSpanEnd(quickInfo.textSpan)),
+                    displayString: displayString,
+                    documentation: docString
+                };
+            };
+            Session.prototype.getFormattingEditsForRange = function (line, offset, endLine, endOffset, fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var startPosition = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var endPosition = compilerService.host.lineOffsetToPosition(file, endLine, endOffset);
+                var edits = compilerService.languageService.getFormattingEditsForRange(file, startPosition, endPosition, this.projectService.getFormatCodeOptions(file));
+                if (!edits) {
+                    return undefined;
+                }
+                return edits.map(function (edit) {
+                    return {
+                        start: compilerService.host.positionToLineOffset(file, edit.span.start),
+                        end: compilerService.host.positionToLineOffset(file, ts.textSpanEnd(edit.span)),
+                        newText: edit.newText ? edit.newText : ""
+                    };
+                });
+            };
+            Session.prototype.getFormattingEditsAfterKeystroke = function (line, offset, key, fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var formatOptions = this.projectService.getFormatCodeOptions(file);
+                var edits = compilerService.languageService.getFormattingEditsAfterKeystroke(file, position, key, formatOptions);
+                if ((key == "\n") && ((!edits) || (edits.length == 0) || allEditsBeforePos(edits, position))) {
+                    var scriptInfo = compilerService.host.getScriptInfo(file);
+                    if (scriptInfo) {
+                        var lineInfo = scriptInfo.getLineInfo(line);
+                        if (lineInfo && (lineInfo.leaf) && (lineInfo.leaf.text)) {
+                            var lineText = lineInfo.leaf.text;
+                            if (lineText.search("\\S") < 0) {
+                                var editorOptions = {
+                                    IndentSize: formatOptions.IndentSize,
+                                    TabSize: formatOptions.TabSize,
+                                    NewLineCharacter: "\n",
+                                    ConvertTabsToSpaces: true
+                                };
+                                var indentPosition = compilerService.languageService.getIndentationAtPosition(file, position, editorOptions);
+                                for (var i = 0, len = lineText.length; i < len; i++) {
+                                    if (lineText.charAt(i) == " ") {
+                                        indentPosition--;
+                                    }
+                                    else {
+                                        break;
+                                    }
+                                }
+                                if (indentPosition > 0) {
+                                    var spaces = generateSpaces(indentPosition);
+                                    edits.push({ span: ts.createTextSpanFromBounds(position, position), newText: spaces });
+                                }
+                                else if (indentPosition < 0) {
+                                    edits.push({
+                                        span: ts.createTextSpanFromBounds(position, position - indentPosition),
+                                        newText: ""
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!edits) {
+                    return undefined;
+                }
+                return edits.map(function (edit) {
+                    return {
+                        start: compilerService.host.positionToLineOffset(file, edit.span.start),
+                        end: compilerService.host.positionToLineOffset(file, ts.textSpanEnd(edit.span)),
+                        newText: edit.newText ? edit.newText : ""
+                    };
+                });
+            };
+            Session.prototype.getCompletions = function (line, offset, prefix, fileName) {
+                if (!prefix) {
+                    prefix = "";
+                }
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var completions = compilerService.languageService.getCompletionsAtPosition(file, position);
+                if (!completions) {
+                    return undefined;
+                }
+                return completions.entries.reduce(function (result, entry) {
+                    if (completions.isMemberCompletion || (entry.name.toLowerCase().indexOf(prefix.toLowerCase()) == 0)) {
+                        result.push(entry);
+                    }
+                    return result;
+                }, []).sort(function (a, b) { return a.name.localeCompare(b.name); });
+            };
+            Session.prototype.getCompletionEntryDetails = function (line, offset, entryNames, fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                return entryNames.reduce(function (accum, entryName) {
+                    var details = compilerService.languageService.getCompletionEntryDetails(file, position, entryName);
+                    if (details) {
+                        accum.push(details);
+                    }
+                    return accum;
+                }, []);
+            };
+            Session.prototype.getSignatureHelpItems = function (line, offset, fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var helpItems = compilerService.languageService.getSignatureHelpItems(file, position);
+                if (!helpItems) {
+                    return undefined;
+                }
+                var span = helpItems.applicableSpan;
+                var result = {
+                    items: helpItems.items,
+                    applicableSpan: {
+                        start: compilerService.host.positionToLineOffset(file, span.start),
+                        end: compilerService.host.positionToLineOffset(file, span.start + span.length)
+                    },
+                    selectedItemIndex: helpItems.selectedItemIndex,
+                    argumentIndex: helpItems.argumentIndex,
+                    argumentCount: helpItems.argumentCount
+                };
+                return result;
+            };
+            Session.prototype.getDiagnostics = function (delay, fileNames) {
+                var _this = this;
+                var checkList = fileNames.reduce(function (accum, fileName) {
+                    fileName = ts.normalizePath(fileName);
+                    var project = _this.projectService.getProjectForFile(fileName);
+                    if (project) {
+                        accum.push({ fileName: fileName, project: project });
+                    }
+                    return accum;
+                }, []);
+                if (checkList.length > 0) {
+                    this.updateErrorCheck(checkList, this.changeSeq, function (n) { return n == _this.changeSeq; }, delay);
+                }
+            };
+            Session.prototype.change = function (line, offset, endLine, endOffset, insertString, fileName) {
+                var _this = this;
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (project) {
+                    var compilerService = project.compilerService;
+                    var start = compilerService.host.lineOffsetToPosition(file, line, offset);
+                    var end = compilerService.host.lineOffsetToPosition(file, endLine, endOffset);
+                    if (start >= 0) {
+                        compilerService.host.editScript(file, start, end, insertString);
+                        this.changeSeq++;
+                    }
+                    this.updateProjectStructure(this.changeSeq, function (n) { return n == _this.changeSeq; });
+                }
+            };
+            Session.prototype.reload = function (fileName, tempFileName, reqSeq) {
+                var _this = this;
+                if (reqSeq === void 0) { reqSeq = 0; }
+                var file = ts.normalizePath(fileName);
+                var tmpfile = ts.normalizePath(tempFileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (project) {
+                    this.changeSeq++;
+                    project.compilerService.host.reloadScript(file, tmpfile, function () {
+                        _this.output(undefined, CommandNames.Reload, reqSeq);
+                    });
+                }
+            };
+            Session.prototype.saveToTmp = function (fileName, tempFileName) {
+                var file = ts.normalizePath(fileName);
+                var tmpfile = ts.normalizePath(tempFileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (project) {
+                    project.compilerService.host.saveTo(file, tmpfile);
+                }
+            };
+            Session.prototype.closeClientFile = function (fileName) {
+                var file = ts.normalizePath(fileName);
+                this.projectService.closeClientFile(file);
+            };
+            Session.prototype.decorateNavigationBarItem = function (project, fileName, items) {
+                var _this = this;
+                if (!items) {
+                    return undefined;
+                }
+                var compilerService = project.compilerService;
+                return items.map(function (item) { return ({
+                    text: item.text,
+                    kind: item.kind,
+                    kindModifiers: item.kindModifiers,
+                    spans: item.spans.map(function (span) { return ({
+                        start: compilerService.host.positionToLineOffset(fileName, span.start),
+                        end: compilerService.host.positionToLineOffset(fileName, ts.textSpanEnd(span))
+                    }); }),
+                    childItems: _this.decorateNavigationBarItem(project, fileName, item.childItems)
+                }); });
+            };
+            Session.prototype.getNavigationBarItems = function (fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var items = compilerService.languageService.getNavigationBarItems(file);
+                if (!items) {
+                    return undefined;
+                }
+                return this.decorateNavigationBarItem(project, fileName, items);
+            };
+            Session.prototype.getNavigateToItems = function (searchValue, fileName, maxResultCount) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var navItems = compilerService.languageService.getNavigateToItems(searchValue, maxResultCount);
+                if (!navItems) {
+                    return undefined;
+                }
+                return navItems.map(function (navItem) {
+                    var start = compilerService.host.positionToLineOffset(navItem.fileName, navItem.textSpan.start);
+                    var end = compilerService.host.positionToLineOffset(navItem.fileName, ts.textSpanEnd(navItem.textSpan));
+                    var bakedItem = {
+                        name: navItem.name,
+                        kind: navItem.kind,
+                        file: navItem.fileName,
+                        start: start,
+                        end: end
+                    };
+                    if (navItem.kindModifiers && (navItem.kindModifiers != "")) {
+                        bakedItem.kindModifiers = navItem.kindModifiers;
+                    }
+                    if (navItem.matchKind != 'none') {
+                        bakedItem.matchKind = navItem.matchKind;
+                    }
+                    if (navItem.containerName && (navItem.containerName.length > 0)) {
+                        bakedItem.containerName = navItem.containerName;
+                    }
+                    if (navItem.containerKind && (navItem.containerKind.length > 0)) {
+                        bakedItem.containerKind = navItem.containerKind;
+                    }
+                    return bakedItem;
+                });
+            };
+            Session.prototype.getBraceMatching = function (line, offset, fileName) {
+                var file = ts.normalizePath(fileName);
+                var project = this.projectService.getProjectForFile(file);
+                if (!project) {
+                    throw Errors.NoProject;
+                }
+                var compilerService = project.compilerService;
+                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
+                var spans = compilerService.languageService.getBraceMatchingAtPosition(file, position);
+                if (!spans) {
+                    return undefined;
+                }
+                return spans.map(function (span) { return ({
+                    start: compilerService.host.positionToLineOffset(file, span.start),
+                    end: compilerService.host.positionToLineOffset(file, span.start + span.length)
+                }); });
+            };
+            Session.prototype.onMessage = function (message) {
+                if (this.logger.isVerbose()) {
+                    this.logger.info("request: " + message);
+                    var start = process.hrtime();
+                }
+                try {
+                    var request = JSON.parse(message);
+                    var response;
+                    var errorMessage;
+                    var responseRequired = true;
+                    switch (request.command) {
+                        case CommandNames.Definition: {
+                            var defArgs = request.arguments;
+                            response = this.getDefinition(defArgs.line, defArgs.offset, defArgs.file);
+                            break;
+                        }
+                        case CommandNames.References: {
+                            var refArgs = request.arguments;
+                            response = this.getReferences(refArgs.line, refArgs.offset, refArgs.file);
+                            break;
+                        }
+                        case CommandNames.Rename: {
+                            var renameArgs = request.arguments;
+                            response = this.getRenameLocations(renameArgs.line, renameArgs.offset, renameArgs.file, renameArgs.findInComments, renameArgs.findInStrings);
+                            break;
+                        }
+                        case CommandNames.Open: {
+                            var openArgs = request.arguments;
+                            this.openClientFile(openArgs.file);
+                            responseRequired = false;
+                            break;
+                        }
+                        case CommandNames.Quickinfo: {
+                            var quickinfoArgs = request.arguments;
+                            response = this.getQuickInfo(quickinfoArgs.line, quickinfoArgs.offset, quickinfoArgs.file);
+                            break;
+                        }
+                        case CommandNames.Format: {
+                            var formatArgs = request.arguments;
+                            response = this.getFormattingEditsForRange(formatArgs.line, formatArgs.offset, formatArgs.endLine, formatArgs.endOffset, formatArgs.file);
+                            break;
+                        }
+                        case CommandNames.Formatonkey: {
+                            var formatOnKeyArgs = request.arguments;
+                            response = this.getFormattingEditsAfterKeystroke(formatOnKeyArgs.line, formatOnKeyArgs.offset, formatOnKeyArgs.key, formatOnKeyArgs.file);
+                            break;
+                        }
+                        case CommandNames.Completions: {
+                            var completionsArgs = request.arguments;
+                            response = this.getCompletions(completionsArgs.line, completionsArgs.offset, completionsArgs.prefix, completionsArgs.file);
+                            break;
+                        }
+                        case CommandNames.CompletionDetails: {
+                            var completionDetailsArgs = request.arguments;
+                            response =
+                                this.getCompletionEntryDetails(completionDetailsArgs.line, completionDetailsArgs.offset, completionDetailsArgs.entryNames, completionDetailsArgs.file);
+                            break;
+                        }
+                        case CommandNames.SignatureHelp: {
+                            var signatureHelpArgs = request.arguments;
+                            response = this.getSignatureHelpItems(signatureHelpArgs.line, signatureHelpArgs.offset, signatureHelpArgs.file);
+                            break;
+                        }
+                        case CommandNames.Geterr: {
+                            var geterrArgs = request.arguments;
+                            response = this.getDiagnostics(geterrArgs.delay, geterrArgs.files);
+                            responseRequired = false;
+                            break;
+                        }
+                        case CommandNames.Change: {
+                            var changeArgs = request.arguments;
+                            this.change(changeArgs.line, changeArgs.offset, changeArgs.endLine, changeArgs.endOffset, changeArgs.insertString, changeArgs.file);
+                            responseRequired = false;
+                            break;
+                        }
+                        case CommandNames.Configure: {
+                            var configureArgs = request.arguments;
+                            this.projectService.setHostConfiguration(configureArgs);
+                            this.output(undefined, CommandNames.Configure, request.seq);
+                            responseRequired = false;
+                            break;
+                        }
+                        case CommandNames.Reload: {
+                            var reloadArgs = request.arguments;
+                            this.reload(reloadArgs.file, reloadArgs.tmpfile, request.seq);
+                            responseRequired = false;
+                            break;
+                        }
+                        case CommandNames.Saveto: {
+                            var savetoArgs = request.arguments;
+                            this.saveToTmp(savetoArgs.file, savetoArgs.tmpfile);
+                            responseRequired = false;
+                            break;
+                        }
+                        case CommandNames.Close: {
+                            var closeArgs = request.arguments;
+                            this.closeClientFile(closeArgs.file);
+                            responseRequired = false;
+                            break;
+                        }
+                        case CommandNames.Navto: {
+                            var navtoArgs = request.arguments;
+                            response = this.getNavigateToItems(navtoArgs.searchValue, navtoArgs.file, navtoArgs.maxResultCount);
+                            break;
+                        }
+                        case CommandNames.Brace: {
+                            var braceArguments = request.arguments;
+                            response = this.getBraceMatching(braceArguments.line, braceArguments.offset, braceArguments.file);
+                            break;
+                        }
+                        case CommandNames.NavBar: {
+                            var navBarArgs = request.arguments;
+                            response = this.getNavigationBarItems(navBarArgs.file);
+                            break;
+                        }
+                        default: {
+                            this.projectService.log("Unrecognized JSON command: " + message);
+                            this.output(undefined, CommandNames.Unknown, request.seq, "Unrecognized JSON command: " + request.command);
+                            break;
+                        }
+                    }
+                    if (this.logger.isVerbose()) {
+                        var elapsed = process.hrtime(start);
+                        var seconds = elapsed[0];
+                        var nanoseconds = elapsed[1];
+                        var elapsedMs = ((1e9 * seconds) + nanoseconds) / 1000000.0;
+                        var leader = "Elapsed time (in milliseconds)";
+                        if (!responseRequired) {
+                            leader = "Async elapsed time (in milliseconds)";
+                        }
+                        this.logger.msg(leader + ": " + elapsedMs.toFixed(4).toString(), "Perf");
+                    }
+                    if (response) {
+                        this.output(response, request.command, request.seq);
+                    }
+                    else if (responseRequired) {
+                        this.output(undefined, request.command, request.seq, "No content available.");
+                    }
+                }
+                catch (err) {
+                    if (err instanceof ts.OperationCanceledException) {
+                    }
+                    this.logError(err, message);
+                    this.output(undefined, request ? request.command : CommandNames.Unknown, request ? request.seq : 0, "Error processing request. " + err.message);
+                }
+            };
+            return Session;
+        })();
+        server.Session = Session;
+    })(server = ts.server || (ts.server = {}));
+})(ts || (ts = {}));
+/// <reference path="..\compiler\commandLineParser.ts" />
+/// <reference path="..\services\services.ts" />
+/// <reference path="protocol.d.ts" />
+/// <reference path="session.ts" />
+/// <reference path="node.d.ts" />
 var ts;
 (function (ts) {
     var server;
     (function (server) {
         var lineCollectionCapacity = 4;
+        function mergeFormatOptions(formatCodeOptions, formatOptions) {
+            var hasOwnProperty = Object.prototype.hasOwnProperty;
+            Object.keys(formatOptions).forEach(function (key) {
+                var codeKey = key.charAt(0).toUpperCase() + key.substring(1);
+                if (hasOwnProperty.call(formatCodeOptions, codeKey)) {
+                    formatCodeOptions[codeKey] = formatOptions[key];
+                }
+            });
+        }
         var ScriptInfo = (function () {
             function ScriptInfo(host, fileName, content, isOpen) {
                 if (isOpen === void 0) { isOpen = false; }
@@ -33102,12 +33874,9 @@ var ts;
                 this.formatCodeOptions = ts.clone(CompilerService.defaultFormatCodeOptions);
                 this.svc = ScriptVersionCache.fromString(content);
             }
-            ScriptInfo.prototype.setFormatOptions = function (tabSize, indentSize) {
-                if (tabSize) {
-                    this.formatCodeOptions.TabSize = tabSize;
-                }
-                if (indentSize) {
-                    this.formatCodeOptions.IndentSize = indentSize;
+            ScriptInfo.prototype.setFormatOptions = function (formatOptions) {
+                if (formatOptions) {
+                    mergeFormatOptions(this.formatCodeOptions, formatOptions);
                 }
             };
             ScriptInfo.prototype.close = function () {
@@ -33425,15 +34194,19 @@ var ts;
                 if (args.file) {
                     var info = this.filenameToScriptInfo[args.file];
                     if (info) {
-                        info.setFormatOptions(args.tabSize, args.indentSize);
-                        this.log("Host configuration update for file " + args.file + " tab size " + args.tabSize);
+                        info.setFormatOptions(args.formatOptions);
+                        this.log("Host configuration update for file " + args.file);
                     }
                 }
                 else {
-                    this.hostConfiguration.formatCodeOptions.TabSize = args.tabSize;
-                    this.hostConfiguration.formatCodeOptions.IndentSize = args.indentSize;
-                    this.hostConfiguration.hostInfo = args.hostInfo;
-                    this.log("Host information " + args.hostInfo, "Info");
+                    if (args.hostInfo !== undefined) {
+                        this.hostConfiguration.hostInfo = args.hostInfo;
+                        this.log("Host information " + args.hostInfo, "Info");
+                    }
+                    if (args.formatOptions) {
+                        mergeFormatOptions(this.hostConfiguration.formatCodeOptions, args.formatOptions);
+                        this.log("Format host information updated", "Info");
+                    }
                 }
             };
             ProjectService.prototype.closeLog = function () {
@@ -33671,9 +34444,30 @@ var ts;
                 }
                 return info;
             };
+            ProjectService.prototype.findConfigFile = function (searchPath) {
+                while (true) {
+                    var fileName = ts.combinePaths(searchPath, "tsconfig.json");
+                    if (ts.sys.fileExists(fileName)) {
+                        return fileName;
+                    }
+                    var parentPath = ts.getDirectoryPath(searchPath);
+                    if (parentPath === searchPath) {
+                        break;
+                    }
+                    searchPath = parentPath;
+                }
+                return undefined;
+            };
             ProjectService.prototype.openClientFile = function (fileName) {
                 var searchPath = ts.normalizePath(ts.getDirectoryPath(fileName));
-                var configFileName = ts.findConfigFile(searchPath);
+                this.log("Search path: " + searchPath, "Info");
+                var configFileName = this.findConfigFile(searchPath);
+                if (configFileName) {
+                    this.log("Config file name: " + configFileName, "Info");
+                }
+                else {
+                    this.log("no config file");
+                }
                 if (configFileName) {
                     configFileName = getAbsolutePath(configFileName, searchPath);
                 }
@@ -34662,820 +35456,6 @@ var ts;
             };
             return LineLeaf;
         })();
-    })(server = ts.server || (ts.server = {}));
-})(ts || (ts = {}));
-/// <reference path="..\compiler\commandLineParser.ts" />
-/// <reference path="..\services\services.ts" />
-/// <reference path="node.d.ts" />
-/// <reference path="protocol.d.ts" />
-/// <reference path="editorServices.ts" />
-var ts;
-(function (ts) {
-    var server;
-    (function (server) {
-        var spaceCache = [];
-        function generateSpaces(n) {
-            if (!spaceCache[n]) {
-                var strBuilder = "";
-                for (var i = 0; i < n; i++) {
-                    strBuilder += " ";
-                }
-                spaceCache[n] = strBuilder;
-            }
-            return spaceCache[n];
-        }
-        server.generateSpaces = generateSpaces;
-        function compareNumber(a, b) {
-            if (a < b) {
-                return -1;
-            }
-            else if (a == b) {
-                return 0;
-            }
-            else
-                return 1;
-        }
-        function compareFileStart(a, b) {
-            if (a.file < b.file) {
-                return -1;
-            }
-            else if (a.file == b.file) {
-                var n = compareNumber(a.start.line, b.start.line);
-                if (n == 0) {
-                    return compareNumber(a.start.offset, b.start.offset);
-                }
-                else
-                    return n;
-            }
-            else {
-                return 1;
-            }
-        }
-        function formatDiag(fileName, project, diag) {
-            return {
-                start: project.compilerService.host.positionToLineOffset(fileName, diag.start),
-                end: project.compilerService.host.positionToLineOffset(fileName, diag.start + diag.length),
-                text: ts.flattenDiagnosticMessageText(diag.messageText, "\n")
-            };
-        }
-        function allEditsBeforePos(edits, pos) {
-            for (var i = 0, len = edits.length; i < len; i++) {
-                if (ts.textSpanEnd(edits[i].span) >= pos) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        var CommandNames;
-        (function (CommandNames) {
-            CommandNames.Change = "change";
-            CommandNames.Close = "close";
-            CommandNames.Completions = "completions";
-            CommandNames.CompletionDetails = "completionEntryDetails";
-            CommandNames.SignatureHelp = "signatureHelp";
-            CommandNames.Configure = "configure";
-            CommandNames.Definition = "definition";
-            CommandNames.Format = "format";
-            CommandNames.Formatonkey = "formatonkey";
-            CommandNames.Geterr = "geterr";
-            CommandNames.NavBar = "navbar";
-            CommandNames.Navto = "navto";
-            CommandNames.Open = "open";
-            CommandNames.Quickinfo = "quickinfo";
-            CommandNames.References = "references";
-            CommandNames.Reload = "reload";
-            CommandNames.Rename = "rename";
-            CommandNames.Saveto = "saveto";
-            CommandNames.Brace = "brace";
-            CommandNames.Unknown = "unknown";
-        })(CommandNames = server.CommandNames || (server.CommandNames = {}));
-        var Errors;
-        (function (Errors) {
-            Errors.NoProject = new Error("No Project.");
-        })(Errors || (Errors = {}));
-        var Session = (function () {
-            function Session(host, logger) {
-                var _this = this;
-                this.host = host;
-                this.logger = logger;
-                this.pendingOperation = false;
-                this.fileHash = {};
-                this.nextFileId = 1;
-                this.changeSeq = 0;
-                this.projectService =
-                    new server.ProjectService(host, logger, function (eventName, project, fileName) {
-                        _this.handleEvent(eventName, project, fileName);
-                    });
-            }
-            Session.prototype.handleEvent = function (eventName, project, fileName) {
-                var _this = this;
-                if (eventName == "context") {
-                    this.projectService.log("got context event, updating diagnostics for" + fileName, "Info");
-                    this.updateErrorCheck([{ fileName: fileName, project: project }], this.changeSeq, function (n) { return n == _this.changeSeq; }, 100);
-                }
-            };
-            Session.prototype.logError = function (err, cmd) {
-                var typedErr = err;
-                var msg = "Exception on executing command " + cmd;
-                if (typedErr.message) {
-                    msg += ":\n" + typedErr.message;
-                    if (typedErr.stack) {
-                        msg += "\n" + typedErr.stack;
-                    }
-                }
-                this.projectService.log(msg);
-            };
-            Session.prototype.sendLineToClient = function (line) {
-                this.host.write(line + this.host.newLine);
-            };
-            Session.prototype.send = function (msg) {
-                var json = JSON.stringify(msg);
-                if (this.logger.isVerbose()) {
-                    this.logger.info(msg.type + ": " + json);
-                }
-                this.sendLineToClient('Content-Length: ' + (1 + Buffer.byteLength(json, 'utf8')) +
-                    '\r\n\r\n' + json);
-            };
-            Session.prototype.event = function (info, eventName) {
-                var ev = {
-                    seq: 0,
-                    type: "event",
-                    event: eventName,
-                    body: info
-                };
-                this.send(ev);
-            };
-            Session.prototype.response = function (info, cmdName, reqSeq, errorMsg) {
-                if (reqSeq === void 0) { reqSeq = 0; }
-                var res = {
-                    seq: 0,
-                    type: "response",
-                    command: cmdName,
-                    request_seq: reqSeq,
-                    success: !errorMsg
-                };
-                if (!errorMsg) {
-                    res.body = info;
-                }
-                else {
-                    res.message = errorMsg;
-                }
-                this.send(res);
-            };
-            Session.prototype.output = function (body, commandName, requestSequence, errorMessage) {
-                if (requestSequence === void 0) { requestSequence = 0; }
-                this.response(body, commandName, requestSequence, errorMessage);
-            };
-            Session.prototype.semanticCheck = function (file, project) {
-                try {
-                    var diags = project.compilerService.languageService.getSemanticDiagnostics(file);
-                    if (diags) {
-                        var bakedDiags = diags.map(function (diag) { return formatDiag(file, project, diag); });
-                        this.event({ file: file, diagnostics: bakedDiags }, "semanticDiag");
-                    }
-                }
-                catch (err) {
-                    this.logError(err, "semantic check");
-                }
-            };
-            Session.prototype.syntacticCheck = function (file, project) {
-                try {
-                    var diags = project.compilerService.languageService.getSyntacticDiagnostics(file);
-                    if (diags) {
-                        var bakedDiags = diags.map(function (diag) { return formatDiag(file, project, diag); });
-                        this.event({ file: file, diagnostics: bakedDiags }, "syntaxDiag");
-                    }
-                }
-                catch (err) {
-                    this.logError(err, "syntactic check");
-                }
-            };
-            Session.prototype.errorCheck = function (file, project) {
-                this.syntacticCheck(file, project);
-                this.semanticCheck(file, project);
-            };
-            Session.prototype.updateProjectStructure = function (seq, matchSeq, ms) {
-                var _this = this;
-                if (ms === void 0) { ms = 1500; }
-                setTimeout(function () {
-                    if (matchSeq(seq)) {
-                        _this.projectService.updateProjectStructure();
-                    }
-                }, ms);
-            };
-            Session.prototype.updateErrorCheck = function (checkList, seq, matchSeq, ms, followMs) {
-                var _this = this;
-                if (ms === void 0) { ms = 1500; }
-                if (followMs === void 0) { followMs = 200; }
-                if (followMs > ms) {
-                    followMs = ms;
-                }
-                if (this.errorTimer) {
-                    clearTimeout(this.errorTimer);
-                }
-                if (this.immediateId) {
-                    clearImmediate(this.immediateId);
-                    this.immediateId = undefined;
-                }
-                var index = 0;
-                var checkOne = function () {
-                    if (matchSeq(seq)) {
-                        var checkSpec = checkList[index++];
-                        if (checkSpec.project.getSourceFileFromName(checkSpec.fileName, true)) {
-                            _this.syntacticCheck(checkSpec.fileName, checkSpec.project);
-                            _this.immediateId = setImmediate(function () {
-                                _this.semanticCheck(checkSpec.fileName, checkSpec.project);
-                                _this.immediateId = undefined;
-                                if (checkList.length > index) {
-                                    _this.errorTimer = setTimeout(checkOne, followMs);
-                                }
-                                else {
-                                    _this.errorTimer = undefined;
-                                }
-                            });
-                        }
-                    }
-                };
-                if ((checkList.length > index) && (matchSeq(seq))) {
-                    this.errorTimer = setTimeout(checkOne, ms);
-                }
-            };
-            Session.prototype.getDefinition = function (line, offset, fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var definitions = compilerService.languageService.getDefinitionAtPosition(file, position);
-                if (!definitions) {
-                    return undefined;
-                }
-                return definitions.map(function (def) { return ({
-                    file: def.fileName,
-                    start: compilerService.host.positionToLineOffset(def.fileName, def.textSpan.start),
-                    end: compilerService.host.positionToLineOffset(def.fileName, ts.textSpanEnd(def.textSpan))
-                }); });
-            };
-            Session.prototype.getRenameLocations = function (line, offset, fileName, findInComments, findInStrings) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var renameInfo = compilerService.languageService.getRenameInfo(file, position);
-                if (!renameInfo) {
-                    return undefined;
-                }
-                if (!renameInfo.canRename) {
-                    return {
-                        info: renameInfo,
-                        locs: []
-                    };
-                }
-                var renameLocations = compilerService.languageService.findRenameLocations(file, position, findInStrings, findInComments);
-                if (!renameLocations) {
-                    return undefined;
-                }
-                var bakedRenameLocs = renameLocations.map(function (location) { return ({
-                    file: location.fileName,
-                    start: compilerService.host.positionToLineOffset(location.fileName, location.textSpan.start),
-                    end: compilerService.host.positionToLineOffset(location.fileName, ts.textSpanEnd(location.textSpan))
-                }); }).sort(function (a, b) {
-                    if (a.file < b.file) {
-                        return -1;
-                    }
-                    else if (a.file > b.file) {
-                        return 1;
-                    }
-                    else {
-                        if (a.start.line < b.start.line) {
-                            return 1;
-                        }
-                        else if (a.start.line > b.start.line) {
-                            return -1;
-                        }
-                        else {
-                            return b.start.offset - a.start.offset;
-                        }
-                    }
-                }).reduce(function (accum, cur) {
-                    var curFileAccum;
-                    if (accum.length > 0) {
-                        curFileAccum = accum[accum.length - 1];
-                        if (curFileAccum.file != cur.file) {
-                            curFileAccum = undefined;
-                        }
-                    }
-                    if (!curFileAccum) {
-                        curFileAccum = { file: cur.file, locs: [] };
-                        accum.push(curFileAccum);
-                    }
-                    curFileAccum.locs.push({ start: cur.start, end: cur.end });
-                    return accum;
-                }, []);
-                return { info: renameInfo, locs: bakedRenameLocs };
-            };
-            Session.prototype.getReferences = function (line, offset, fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var references = compilerService.languageService.getReferencesAtPosition(file, position);
-                if (!references) {
-                    return undefined;
-                }
-                var nameInfo = compilerService.languageService.getQuickInfoAtPosition(file, position);
-                if (!nameInfo) {
-                    return undefined;
-                }
-                var displayString = ts.displayPartsToString(nameInfo.displayParts);
-                var nameSpan = nameInfo.textSpan;
-                var nameColStart = compilerService.host.positionToLineOffset(file, nameSpan.start).offset;
-                var nameText = compilerService.host.getScriptSnapshot(file).getText(nameSpan.start, ts.textSpanEnd(nameSpan));
-                var bakedRefs = references.map(function (ref) {
-                    var start = compilerService.host.positionToLineOffset(ref.fileName, ref.textSpan.start);
-                    var refLineSpan = compilerService.host.lineToTextSpan(ref.fileName, start.line - 1);
-                    var snap = compilerService.host.getScriptSnapshot(ref.fileName);
-                    var lineText = snap.getText(refLineSpan.start, ts.textSpanEnd(refLineSpan)).replace(/\r|\n/g, "");
-                    return {
-                        file: ref.fileName,
-                        start: start,
-                        lineText: lineText,
-                        end: compilerService.host.positionToLineOffset(ref.fileName, ts.textSpanEnd(ref.textSpan)),
-                        isWriteAccess: ref.isWriteAccess
-                    };
-                }).sort(compareFileStart);
-                return {
-                    refs: bakedRefs,
-                    symbolName: nameText,
-                    symbolStartOffset: nameColStart,
-                    symbolDisplayString: displayString
-                };
-            };
-            Session.prototype.openClientFile = function (fileName, tabSize, indentSize) {
-                var file = ts.normalizePath(fileName);
-                var info = this.projectService.openClientFile(file);
-                if (info) {
-                    info.setFormatOptions(tabSize, indentSize);
-                }
-            };
-            Session.prototype.getQuickInfo = function (line, offset, fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var quickInfo = compilerService.languageService.getQuickInfoAtPosition(file, position);
-                if (!quickInfo) {
-                    return undefined;
-                }
-                var displayString = ts.displayPartsToString(quickInfo.displayParts);
-                var docString = ts.displayPartsToString(quickInfo.documentation);
-                return {
-                    kind: quickInfo.kind,
-                    kindModifiers: quickInfo.kindModifiers,
-                    start: compilerService.host.positionToLineOffset(file, quickInfo.textSpan.start),
-                    end: compilerService.host.positionToLineOffset(file, ts.textSpanEnd(quickInfo.textSpan)),
-                    displayString: displayString,
-                    documentation: docString
-                };
-            };
-            Session.prototype.getFormattingEditsForRange = function (line, offset, endLine, endOffset, fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var startPosition = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var endPosition = compilerService.host.lineOffsetToPosition(file, endLine, endOffset);
-                var edits = compilerService.languageService.getFormattingEditsForRange(file, startPosition, endPosition, this.projectService.getFormatCodeOptions(file));
-                if (!edits) {
-                    return undefined;
-                }
-                return edits.map(function (edit) {
-                    return {
-                        start: compilerService.host.positionToLineOffset(file, edit.span.start),
-                        end: compilerService.host.positionToLineOffset(file, ts.textSpanEnd(edit.span)),
-                        newText: edit.newText ? edit.newText : ""
-                    };
-                });
-            };
-            Session.prototype.getFormattingEditsAfterKeystroke = function (line, offset, key, fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var formatOptions = this.projectService.getFormatCodeOptions(file);
-                var edits = compilerService.languageService.getFormattingEditsAfterKeystroke(file, position, key, formatOptions);
-                if ((key == "\n") && ((!edits) || (edits.length == 0) || allEditsBeforePos(edits, position))) {
-                    var scriptInfo = compilerService.host.getScriptInfo(file);
-                    if (scriptInfo) {
-                        var lineInfo = scriptInfo.getLineInfo(line);
-                        if (lineInfo && (lineInfo.leaf) && (lineInfo.leaf.text)) {
-                            var lineText = lineInfo.leaf.text;
-                            if (lineText.search("\\S") < 0) {
-                                var editorOptions = {
-                                    IndentSize: formatOptions.IndentSize,
-                                    TabSize: formatOptions.TabSize,
-                                    NewLineCharacter: "\n",
-                                    ConvertTabsToSpaces: true
-                                };
-                                var indentPosition = compilerService.languageService.getIndentationAtPosition(file, position, editorOptions);
-                                for (var i = 0, len = lineText.length; i < len; i++) {
-                                    if (lineText.charAt(i) == " ") {
-                                        indentPosition--;
-                                    }
-                                    else {
-                                        break;
-                                    }
-                                }
-                                if (indentPosition > 0) {
-                                    var spaces = generateSpaces(indentPosition);
-                                    edits.push({ span: ts.createTextSpanFromBounds(position, position), newText: spaces });
-                                }
-                                else if (indentPosition < 0) {
-                                    edits.push({
-                                        span: ts.createTextSpanFromBounds(position, position - indentPosition),
-                                        newText: ""
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-                if (!edits) {
-                    return undefined;
-                }
-                return edits.map(function (edit) {
-                    return {
-                        start: compilerService.host.positionToLineOffset(file, edit.span.start),
-                        end: compilerService.host.positionToLineOffset(file, ts.textSpanEnd(edit.span)),
-                        newText: edit.newText ? edit.newText : ""
-                    };
-                });
-            };
-            Session.prototype.getCompletions = function (line, offset, prefix, fileName) {
-                if (!prefix) {
-                    prefix = "";
-                }
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var completions = compilerService.languageService.getCompletionsAtPosition(file, position);
-                if (!completions) {
-                    return undefined;
-                }
-                return completions.entries.reduce(function (result, entry) {
-                    if (completions.isMemberCompletion || (entry.name.toLowerCase().indexOf(prefix.toLowerCase()) == 0)) {
-                        result.push(entry);
-                    }
-                    return result;
-                }, []).sort(function (a, b) { return a.name.localeCompare(b.name); });
-            };
-            Session.prototype.getCompletionEntryDetails = function (line, offset, entryNames, fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                return entryNames.reduce(function (accum, entryName) {
-                    var details = compilerService.languageService.getCompletionEntryDetails(file, position, entryName);
-                    if (details) {
-                        accum.push(details);
-                    }
-                    return accum;
-                }, []);
-            };
-            Session.prototype.getSignatureHelpItems = function (line, offset, fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var helpItems = compilerService.languageService.getSignatureHelpItems(file, position);
-                if (!helpItems) {
-                    return undefined;
-                }
-                var span = helpItems.applicableSpan;
-                var result = {
-                    items: helpItems.items,
-                    applicableSpan: {
-                        start: compilerService.host.positionToLineOffset(file, span.start),
-                        end: compilerService.host.positionToLineOffset(file, span.start + span.length)
-                    },
-                    selectedItemIndex: helpItems.selectedItemIndex,
-                    argumentIndex: helpItems.argumentIndex,
-                    argumentCount: helpItems.argumentCount
-                };
-                return result;
-            };
-            Session.prototype.getDiagnostics = function (delay, fileNames) {
-                var _this = this;
-                var checkList = fileNames.reduce(function (accum, fileName) {
-                    fileName = ts.normalizePath(fileName);
-                    var project = _this.projectService.getProjectForFile(fileName);
-                    if (project) {
-                        accum.push({ fileName: fileName, project: project });
-                    }
-                    return accum;
-                }, []);
-                if (checkList.length > 0) {
-                    this.updateErrorCheck(checkList, this.changeSeq, function (n) { return n == _this.changeSeq; }, delay);
-                }
-            };
-            Session.prototype.change = function (line, offset, endLine, endOffset, insertString, fileName) {
-                var _this = this;
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (project) {
-                    var compilerService = project.compilerService;
-                    var start = compilerService.host.lineOffsetToPosition(file, line, offset);
-                    var end = compilerService.host.lineOffsetToPosition(file, endLine, endOffset);
-                    if (start >= 0) {
-                        compilerService.host.editScript(file, start, end, insertString);
-                        this.changeSeq++;
-                    }
-                    this.updateProjectStructure(this.changeSeq, function (n) { return n == _this.changeSeq; });
-                }
-            };
-            Session.prototype.reload = function (fileName, tempFileName, reqSeq) {
-                var _this = this;
-                if (reqSeq === void 0) { reqSeq = 0; }
-                var file = ts.normalizePath(fileName);
-                var tmpfile = ts.normalizePath(tempFileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (project) {
-                    this.changeSeq++;
-                    project.compilerService.host.reloadScript(file, tmpfile, function () {
-                        _this.output(undefined, CommandNames.Reload, reqSeq);
-                    });
-                }
-            };
-            Session.prototype.saveToTmp = function (fileName, tempFileName) {
-                var file = ts.normalizePath(fileName);
-                var tmpfile = ts.normalizePath(tempFileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (project) {
-                    project.compilerService.host.saveTo(file, tmpfile);
-                }
-            };
-            Session.prototype.closeClientFile = function (fileName) {
-                var file = ts.normalizePath(fileName);
-                this.projectService.closeClientFile(file);
-            };
-            Session.prototype.decorateNavigationBarItem = function (project, fileName, items) {
-                var _this = this;
-                if (!items) {
-                    return undefined;
-                }
-                var compilerService = project.compilerService;
-                return items.map(function (item) { return ({
-                    text: item.text,
-                    kind: item.kind,
-                    kindModifiers: item.kindModifiers,
-                    spans: item.spans.map(function (span) { return ({
-                        start: compilerService.host.positionToLineOffset(fileName, span.start),
-                        end: compilerService.host.positionToLineOffset(fileName, ts.textSpanEnd(span))
-                    }); }),
-                    childItems: _this.decorateNavigationBarItem(project, fileName, item.childItems)
-                }); });
-            };
-            Session.prototype.getNavigationBarItems = function (fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var items = compilerService.languageService.getNavigationBarItems(file);
-                if (!items) {
-                    return undefined;
-                }
-                return this.decorateNavigationBarItem(project, fileName, items);
-            };
-            Session.prototype.getNavigateToItems = function (searchValue, fileName, maxResultCount) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var navItems = compilerService.languageService.getNavigateToItems(searchValue, maxResultCount);
-                if (!navItems) {
-                    return undefined;
-                }
-                return navItems.map(function (navItem) {
-                    var start = compilerService.host.positionToLineOffset(navItem.fileName, navItem.textSpan.start);
-                    var end = compilerService.host.positionToLineOffset(navItem.fileName, ts.textSpanEnd(navItem.textSpan));
-                    var bakedItem = {
-                        name: navItem.name,
-                        kind: navItem.kind,
-                        file: navItem.fileName,
-                        start: start,
-                        end: end
-                    };
-                    if (navItem.kindModifiers && (navItem.kindModifiers != "")) {
-                        bakedItem.kindModifiers = navItem.kindModifiers;
-                    }
-                    if (navItem.matchKind != 'none') {
-                        bakedItem.matchKind = navItem.matchKind;
-                    }
-                    if (navItem.containerName && (navItem.containerName.length > 0)) {
-                        bakedItem.containerName = navItem.containerName;
-                    }
-                    if (navItem.containerKind && (navItem.containerKind.length > 0)) {
-                        bakedItem.containerKind = navItem.containerKind;
-                    }
-                    return bakedItem;
-                });
-            };
-            Session.prototype.getBraceMatching = function (line, offset, fileName) {
-                var file = ts.normalizePath(fileName);
-                var project = this.projectService.getProjectForFile(file);
-                if (!project) {
-                    throw Errors.NoProject;
-                }
-                var compilerService = project.compilerService;
-                var position = compilerService.host.lineOffsetToPosition(file, line, offset);
-                var spans = compilerService.languageService.getBraceMatchingAtPosition(file, position);
-                if (!spans) {
-                    return undefined;
-                }
-                return spans.map(function (span) { return ({
-                    start: compilerService.host.positionToLineOffset(file, span.start),
-                    end: compilerService.host.positionToLineOffset(file, span.start + span.length)
-                }); });
-            };
-            Session.prototype.onMessage = function (message) {
-                if (this.logger.isVerbose()) {
-                    this.logger.info("request: " + message);
-                    var start = process.hrtime();
-                }
-                try {
-                    var request = JSON.parse(message);
-                    var response;
-                    var errorMessage;
-                    var responseRequired = true;
-                    switch (request.command) {
-                        case CommandNames.Definition: {
-                            var defArgs = request.arguments;
-                            response = this.getDefinition(defArgs.line, defArgs.offset, defArgs.file);
-                            break;
-                        }
-                        case CommandNames.References: {
-                            var refArgs = request.arguments;
-                            response = this.getReferences(refArgs.line, refArgs.offset, refArgs.file);
-                            break;
-                        }
-                        case CommandNames.Rename: {
-                            var renameArgs = request.arguments;
-                            response = this.getRenameLocations(renameArgs.line, renameArgs.offset, renameArgs.file, renameArgs.findInComments, renameArgs.findInStrings);
-                            break;
-                        }
-                        case CommandNames.Open: {
-                            var openArgs = request.arguments;
-                            this.openClientFile(openArgs.file, openArgs.tabSize, openArgs.indentSize);
-                            responseRequired = false;
-                            break;
-                        }
-                        case CommandNames.Quickinfo: {
-                            var quickinfoArgs = request.arguments;
-                            response = this.getQuickInfo(quickinfoArgs.line, quickinfoArgs.offset, quickinfoArgs.file);
-                            break;
-                        }
-                        case CommandNames.Format: {
-                            var formatArgs = request.arguments;
-                            response = this.getFormattingEditsForRange(formatArgs.line, formatArgs.offset, formatArgs.endLine, formatArgs.endOffset, formatArgs.file);
-                            break;
-                        }
-                        case CommandNames.Formatonkey: {
-                            var formatOnKeyArgs = request.arguments;
-                            response = this.getFormattingEditsAfterKeystroke(formatOnKeyArgs.line, formatOnKeyArgs.offset, formatOnKeyArgs.key, formatOnKeyArgs.file);
-                            break;
-                        }
-                        case CommandNames.Completions: {
-                            var completionsArgs = request.arguments;
-                            response = this.getCompletions(completionsArgs.line, completionsArgs.offset, completionsArgs.prefix, completionsArgs.file);
-                            break;
-                        }
-                        case CommandNames.CompletionDetails: {
-                            var completionDetailsArgs = request.arguments;
-                            response =
-                                this.getCompletionEntryDetails(completionDetailsArgs.line, completionDetailsArgs.offset, completionDetailsArgs.entryNames, completionDetailsArgs.file);
-                            break;
-                        }
-                        case CommandNames.SignatureHelp: {
-                            var signatureHelpArgs = request.arguments;
-                            response = this.getSignatureHelpItems(signatureHelpArgs.line, signatureHelpArgs.offset, signatureHelpArgs.file);
-                            break;
-                        }
-                        case CommandNames.Geterr: {
-                            var geterrArgs = request.arguments;
-                            response = this.getDiagnostics(geterrArgs.delay, geterrArgs.files);
-                            responseRequired = false;
-                            break;
-                        }
-                        case CommandNames.Change: {
-                            var changeArgs = request.arguments;
-                            this.change(changeArgs.line, changeArgs.offset, changeArgs.endLine, changeArgs.endOffset, changeArgs.insertString, changeArgs.file);
-                            responseRequired = false;
-                            break;
-                        }
-                        case CommandNames.Configure: {
-                            var configureArgs = request.arguments;
-                            this.projectService.setHostConfiguration(configureArgs);
-                            this.output(undefined, CommandNames.Configure, request.seq);
-                            responseRequired = false;
-                            break;
-                        }
-                        case CommandNames.Reload: {
-                            var reloadArgs = request.arguments;
-                            this.reload(reloadArgs.file, reloadArgs.tmpfile, request.seq);
-                            responseRequired = false;
-                            break;
-                        }
-                        case CommandNames.Saveto: {
-                            var savetoArgs = request.arguments;
-                            this.saveToTmp(savetoArgs.file, savetoArgs.tmpfile);
-                            responseRequired = false;
-                            break;
-                        }
-                        case CommandNames.Close: {
-                            var closeArgs = request.arguments;
-                            this.closeClientFile(closeArgs.file);
-                            responseRequired = false;
-                            break;
-                        }
-                        case CommandNames.Navto: {
-                            var navtoArgs = request.arguments;
-                            response = this.getNavigateToItems(navtoArgs.searchValue, navtoArgs.file, navtoArgs.maxResultCount);
-                            break;
-                        }
-                        case CommandNames.Brace: {
-                            var braceArguments = request.arguments;
-                            response = this.getBraceMatching(braceArguments.line, braceArguments.offset, braceArguments.file);
-                            break;
-                        }
-                        case CommandNames.NavBar: {
-                            var navBarArgs = request.arguments;
-                            response = this.getNavigationBarItems(navBarArgs.file);
-                            break;
-                        }
-                        default: {
-                            this.projectService.log("Unrecognized JSON command: " + message);
-                            this.output(undefined, CommandNames.Unknown, request.seq, "Unrecognized JSON command: " + request.command);
-                            break;
-                        }
-                    }
-                    if (this.logger.isVerbose()) {
-                        var elapsed = process.hrtime(start);
-                        var seconds = elapsed[0];
-                        var nanoseconds = elapsed[1];
-                        var elapsedMs = ((1e9 * seconds) + nanoseconds) / 1000000.0;
-                        var leader = "Elapsed time (in milliseconds)";
-                        if (!responseRequired) {
-                            leader = "Async elapsed time (in milliseconds)";
-                        }
-                        this.logger.msg(leader + ": " + elapsedMs.toFixed(4).toString(), "Perf");
-                    }
-                    if (response) {
-                        this.output(response, request.command, request.seq);
-                    }
-                    else if (responseRequired) {
-                        this.output(undefined, request.command, request.seq, "No content available.");
-                    }
-                }
-                catch (err) {
-                    if (err instanceof ts.OperationCanceledException) {
-                    }
-                    this.logError(err, message);
-                    this.output(undefined, request ? request.command : CommandNames.Unknown, request ? request.seq : 0, "Error processing request. " + err.message);
-                }
-            };
-            return Session;
-        })();
-        server.Session = Session;
     })(server = ts.server || (ts.server = {}));
 })(ts || (ts = {}));
 /// <reference path="node.d.ts" />
