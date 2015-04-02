@@ -1,6 +1,6 @@
 {
 	"name": "typescript",
-	"version": "0.20150330.0+de8eb7cdb47ea9b01a165cac23de33dcdf5f346d",
+	"version": "0.20150402.0+490dfef41b33e6d3a1c67c75f299599a9c5d68a6",
 	"description": "Somewhat regularly-built snapshots of https://github.com/Microsoft/TypeScript",
 	"keywords": ["TypeScript"],
 	"homepage": "https://github.com/Arnavion/typescript-github",
