@@ -8989,7 +8989,7 @@ var ts;
             isImplementationOfOverload: isImplementationOfOverload,
             getAliasedSymbol: resolveAlias,
             getEmitResolver: getEmitResolver,
-            getExportsOfModule: getExportsOfModuleAsArray
+            getExportsOfExternalModule: getExportsOfExternalModule
         };
         var unknownSymbol = createSymbol(4 | 67108864, "unknown");
         var resolvingSymbol = createSymbol(67108864, "__resolving__");
@@ -9659,9 +9659,6 @@ var ts;
         }
         function getExportAssignmentSymbol(moduleSymbol) {
             return moduleSymbol.exports["export="];
-        }
-        function getExportsOfModuleAsArray(moduleSymbol) {
-            return symbolsToArray(getExportsOfModule(moduleSymbol));
         }
         function getExportsOfSymbol(symbol) {
             return symbol.flags & 1536 ? getExportsOfModule(symbol) : symbol.exports || emptySymbols;
@@ -11419,6 +11416,16 @@ var ts;
                 }
             }
             return result;
+        }
+        function getExportsOfExternalModule(node) {
+            if (!node.moduleSpecifier) {
+                return emptyArray;
+            }
+            var module = resolveExternalModuleName(node, node.moduleSpecifier);
+            if (!module) {
+                return emptyArray;
+            }
+            return symbolsToArray(getExportsOfModule(module));
         }
         function getSignatureFromDeclaration(declaration) {
             var links = getNodeLinks(declaration);
@@ -24189,7 +24196,7 @@ var ts;
     ts.emitTime = 0;
     ts.ioReadTime = 0;
     ts.ioWriteTime = 0;
-    ts.version = "1.5.0";
+    ts.version = "1.5.0-alpha";
     function findConfigFile(searchPath) {
         var fileName = "tsconfig.json";
         while (true) {
@@ -30836,8 +30843,7 @@ var ts;
                         symbol = typeInfoResolver.getAliasedSymbol(symbol);
                     }
                     if (symbol && symbol.flags & 1952) {
-                        var exportedSymbols = typeInfoResolver.getExportsOfModule(symbol);
-                        ts.forEach(exportedSymbols, function (symbol) {
+                        ts.forEachValue(symbol.exports, function (symbol) {
                             if (typeInfoResolver.isValidPropertyAccess((node.parent), symbol.name)) {
                                 symbols.push(symbol);
                             }
@@ -30873,14 +30879,8 @@ var ts;
                     if (showCompletionsInImportsClause(contextToken)) {
                         var importDeclaration = ts.getAncestor(contextToken, 209);
                         ts.Debug.assert(importDeclaration !== undefined);
-                        var exports;
-                        if (importDeclaration.moduleSpecifier) {
-                            var moduleSpecifierSymbol = typeInfoResolver.getSymbolAtLocation(importDeclaration.moduleSpecifier);
-                            if (moduleSpecifierSymbol) {
-                                exports = typeInfoResolver.getExportsOfModule(moduleSpecifierSymbol);
-                            }
-                        }
-                        symbols = exports ? filterModuleExports(exports, importDeclaration) : emptyArray;
+                        var exports = typeInfoResolver.getExportsOfExternalModule(importDeclaration);
+                        symbols = filterModuleExports(exports, importDeclaration);
                     }
                 }
                 else {
