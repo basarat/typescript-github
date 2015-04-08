@@ -17,7 +17,7 @@ or in your package.json
     }
 ```
 
-Each release is named after the day it was built and the git commit hash in Microsoft/TypeScript/release-1.5 that it was built from.
+Each release is named after the day it was built and the git commit hash in Microsoft/TypeScript/master that it was built from.
 
 
 ### Build
@@ -37,7 +37,7 @@ cd $typeScriptDirectory
 
 git clean -xfd
 git fetch origin
-git reset --hard origin/release-1.5
+git reset --hard origin/master
 
 commitHash=`git rev-parse HEAD`
 
