@@ -452,7 +452,8 @@ declare module "typescript" {
     interface ParenthesizedTypeNode extends TypeNode {
         type: TypeNode;
     }
-    interface StringLiteralTypeNode extends LiteralExpression, TypeNode {
+    interface StringLiteral extends LiteralExpression, TypeNode {
+        _stringLiteralBrand: any;
     }
     interface Expression extends Node {
         _expressionBrand: any;
@@ -518,9 +519,6 @@ declare module "typescript" {
         isUnterminated?: boolean;
         hasExtendedUnicodeEscape?: boolean;
     }
-    interface StringLiteralExpression extends LiteralExpression {
-        _stringLiteralExpressionBrand: any;
-    }
     interface TemplateExpression extends PrimaryExpression {
         head: LiteralExpression;
         templateSpans: NodeArray<TemplateSpan>;
@@ -555,7 +553,7 @@ declare module "typescript" {
         typeArguments?: NodeArray<TypeNode>;
         arguments: NodeArray<Expression>;
     }
-    interface HeritageClauseElement extends Node {
+    interface HeritageClauseElement extends TypeNode {
         expression: LeftHandSideExpression;
         typeArguments?: NodeArray<TypeNode>;
     }
@@ -1007,12 +1005,14 @@ declare module "typescript" {
     }
     interface InterfaceType extends ObjectType {
         typeParameters: TypeParameter[];
-        baseTypes: ObjectType[];
         declaredProperties: Symbol[];
         declaredCallSignatures: Signature[];
         declaredConstructSignatures: Signature[];
         declaredStringIndexType: Type;
         declaredNumberIndexType: Type;
+    }
+    interface InterfaceTypeWithBaseTypes extends InterfaceType {
+        baseTypes: ObjectType[];
     }
     interface TypeReference extends ObjectType {
         target: GenericType;
