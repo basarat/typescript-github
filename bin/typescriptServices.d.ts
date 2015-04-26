@@ -597,7 +597,7 @@ declare module ts {
     interface ForStatement extends IterationStatement {
         initializer?: VariableDeclarationList | Expression;
         condition?: Expression;
-        iterator?: Expression;
+        incrementor?: Expression;
     }
     interface ForInStatement extends IterationStatement {
         initializer: VariableDeclarationList | Expression;
@@ -755,6 +755,9 @@ declare module ts {
         getCompilerOptions(): CompilerOptions;
         getSourceFile(fileName: string): SourceFile;
         getCurrentDirectory(): string;
+    }
+    interface ParseConfigHost {
+        readDirectory(rootDir: string, extension: string): string[];
     }
     interface WriteFileCallback {
         (fileName: string, data: string, writeByteOrderMark: boolean, onError?: (message: string) => void): void;
@@ -1005,14 +1008,16 @@ declare module ts {
     }
     interface InterfaceType extends ObjectType {
         typeParameters: TypeParameter[];
+    }
+    interface InterfaceTypeWithBaseTypes extends InterfaceType {
+        baseTypes: ObjectType[];
+    }
+    interface InterfaceTypeWithDeclaredMembers extends InterfaceType {
         declaredProperties: Symbol[];
         declaredCallSignatures: Signature[];
         declaredConstructSignatures: Signature[];
         declaredStringIndexType: Type;
         declaredNumberIndexType: Type;
-    }
-    interface InterfaceTypeWithBaseTypes extends InterfaceType {
-        baseTypes: ObjectType[];
     }
     interface TypeReference extends ObjectType {
         target: GenericType;
@@ -1110,6 +1115,7 @@ declare module ts {
         None = 0,
         CommonJS = 1,
         AMD = 2,
+        UMD = 3,
     }
     interface LineAndCharacter {
         line: number;
@@ -1233,14 +1239,26 @@ declare module ts {
       * Read tsconfig.json file
       * @param fileName The path to the config file
       */
-    function readConfigFile(fileName: string): any;
+    function readConfigFile(fileName: string): {
+        config?: any;
+        error?: Diagnostic;
+    };
+    /**
+      * Parse the text of the tsconfig.json file
+      * @param fileName The path to the config file
+      * @param jsonText The text of the config file
+      */
+    function parseConfigFileText(fileName: string, jsonText: string): {
+        config?: any;
+        error?: Diagnostic;
+    };
     /**
       * Parse the contents of a config file (tsconfig.json).
       * @param json The contents of the config file to parse
       * @param basePath A root directory to resolve relative path entries in the config
       *    file to. e.g. outDir
       */
-    function parseConfigFile(json: any, basePath?: string): ParsedCommandLine;
+    function parseConfigFile(json: any, host: ParseConfigHost, basePath: string): ParsedCommandLine;
 }
 declare module ts {
     /** The version of the language service API */
