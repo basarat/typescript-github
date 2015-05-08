@@ -11441,7 +11441,13 @@ var ts;
             }
             return false;
         }
+        var removeSubtypesStack = [];
         function removeSubtypes(types) {
+            var typeListId = getTypeListId(types);
+            if (removeSubtypesStack.lastIndexOf(typeListId) >= 0) {
+                return;
+            }
+            removeSubtypesStack.push(typeListId);
             var i = types.length;
             while (i > 0) {
                 i--;
@@ -11449,6 +11455,7 @@ var ts;
                     types.splice(i, 1);
                 }
             }
+            removeSubtypesStack.pop();
         }
         function containsAnyType(types) {
             for (var _i = 0; _i < types.length; _i++) {
@@ -13004,31 +13011,33 @@ var ts;
                 if (!isTypeSubtypeOf(rightType, globalFunctionType)) {
                     return type;
                 }
+                var targetType;
                 var prototypeProperty = getPropertyOfType(rightType, "prototype");
                 if (prototypeProperty) {
-                    var targetType = getTypeOfSymbol(prototypeProperty);
-                    if (targetType !== anyType) {
-                        if (isTypeSubtypeOf(targetType, type)) {
-                            return targetType;
-                        }
-                        if (type.flags & 16384) {
-                            return getUnionType(ts.filter(type.types, function (t) { return isTypeSubtypeOf(t, targetType); }));
-                        }
+                    var prototypePropertyType = getTypeOfSymbol(prototypeProperty);
+                    if (prototypePropertyType !== anyType) {
+                        targetType = prototypePropertyType;
                     }
                 }
-                var constructSignatures;
-                if (rightType.flags & 2048) {
-                    constructSignatures = resolveDeclaredMembers(rightType).declaredConstructSignatures;
+                if (!targetType) {
+                    var constructSignatures;
+                    if (rightType.flags & 2048) {
+                        constructSignatures = resolveDeclaredMembers(rightType).declaredConstructSignatures;
+                    }
+                    else if (rightType.flags & 32768) {
+                        constructSignatures = getSignaturesOfType(rightType, 1);
+                    }
+                    if (constructSignatures && constructSignatures.length) {
+                        targetType = getUnionType(ts.map(constructSignatures, function (signature) { return getReturnTypeOfSignature(getErasedSignature(signature)); }));
+                    }
                 }
-                else if (rightType.flags & 32768) {
-                    constructSignatures = getSignaturesOfType(rightType, 1);
-                }
-                if (constructSignatures && constructSignatures.length !== 0) {
-                    var instanceType = getUnionType(ts.map(constructSignatures, function (signature) { return getReturnTypeOfSignature(getErasedSignature(signature)); }));
+                if (targetType) {
+                    if (isTypeSubtypeOf(targetType, type)) {
+                        return targetType;
+                    }
                     if (type.flags & 16384) {
-                        return getUnionType(ts.filter(type.types, function (t) { return isTypeSubtypeOf(t, instanceType); }));
+                        return getUnionType(ts.filter(type.types, function (t) { return isTypeSubtypeOf(t, targetType); }));
                     }
-                    return instanceType;
                 }
                 return type;
             }
@@ -24992,7 +25001,7 @@ var ts;
     ts.emitTime = 0;
     ts.ioReadTime = 0;
     ts.ioWriteTime = 0;
-    ts.version = "1.5.0";
+    ts.version = "1.5.2";
     var carriageReturnLineFeed = "\r\n";
     var lineFeed = "\n";
     function findConfigFile(searchPath) {

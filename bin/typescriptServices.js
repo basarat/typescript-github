@@ -14021,7 +14021,17 @@ var ts;
             }
             return false;
         }
+        // Since removeSubtypes checks the subtype relation, and the subtype relation on a union
+        // may attempt to reduce a union, it is possible that removeSubtypes could be called
+        // recursively on the same set of types. The removeSubtypesStack is used to track which
+        // sets of types are currently undergoing subtype reduction.
+        var removeSubtypesStack = [];
         function removeSubtypes(types) {
+            var typeListId = getTypeListId(types);
+            if (removeSubtypesStack.lastIndexOf(typeListId) >= 0) {
+                return;
+            }
+            removeSubtypesStack.push(typeListId);
             var i = types.length;
             while (i > 0) {
                 i--;
@@ -14029,6 +14039,7 @@ var ts;
                     types.splice(i, 1);
                 }
             }
+            removeSubtypesStack.pop();
         }
         function containsAnyType(types) {
             for (var _i = 0; _i < types.length; _i++) {
@@ -15730,36 +15741,37 @@ var ts;
                 if (!isTypeSubtypeOf(rightType, globalFunctionType)) {
                     return type;
                 }
-                // Target type is type of prototype property
+                var targetType;
                 var prototypeProperty = getPropertyOfType(rightType, "prototype");
                 if (prototypeProperty) {
-                    var targetType = getTypeOfSymbol(prototypeProperty);
-                    if (targetType !== anyType) {
-                        // Narrow to the target type if it's a subtype of the current type
-                        if (isTypeSubtypeOf(targetType, type)) {
-                            return targetType;
-                        }
-                        // If the current type is a union type, remove all constituents that aren't subtypes of the target.
-                        if (type.flags & 16384 /* Union */) {
-                            return getUnionType(ts.filter(type.types, function (t) { return isTypeSubtypeOf(t, targetType); }));
-                        }
+                    // Target type is type of the protoype property
+                    var prototypePropertyType = getTypeOfSymbol(prototypeProperty);
+                    if (prototypePropertyType !== anyType) {
+                        targetType = prototypePropertyType;
                     }
                 }
-                // Target type is type of construct signature
-                var constructSignatures;
-                if (rightType.flags & 2048 /* Interface */) {
-                    constructSignatures = resolveDeclaredMembers(rightType).declaredConstructSignatures;
+                if (!targetType) {
+                    // Target type is type of construct signature
+                    var constructSignatures;
+                    if (rightType.flags & 2048 /* Interface */) {
+                        constructSignatures = resolveDeclaredMembers(rightType).declaredConstructSignatures;
+                    }
+                    else if (rightType.flags & 32768 /* Anonymous */) {
+                        constructSignatures = getSignaturesOfType(rightType, 1 /* Construct */);
+                    }
+                    if (constructSignatures && constructSignatures.length) {
+                        targetType = getUnionType(ts.map(constructSignatures, function (signature) { return getReturnTypeOfSignature(getErasedSignature(signature)); }));
+                    }
                 }
-                else if (rightType.flags & 32768 /* Anonymous */) {
-                    constructSignatures = getSignaturesOfType(rightType, 1 /* Construct */);
-                }
-                if (constructSignatures && constructSignatures.length !== 0) {
-                    var instanceType = getUnionType(ts.map(constructSignatures, function (signature) { return getReturnTypeOfSignature(getErasedSignature(signature)); }));
-                    // Pickup type from union types
+                if (targetType) {
+                    // Narrow to the target type if it's a subtype of the current type
+                    if (isTypeSubtypeOf(targetType, type)) {
+                        return targetType;
+                    }
+                    // If the current type is a union type, remove all constituents that aren't subtypes of the target.
                     if (type.flags & 16384 /* Union */) {
-                        return getUnionType(ts.filter(type.types, function (t) { return isTypeSubtypeOf(t, instanceType); }));
+                        return getUnionType(ts.filter(type.types, function (t) { return isTypeSubtypeOf(t, targetType); }));
                     }
-                    return instanceType;
                 }
                 return type;
             }
@@ -29571,7 +29583,7 @@ var ts;
     /* @internal */ ts.ioReadTime = 0;
     /* @internal */ ts.ioWriteTime = 0;
     /** The version of the TypeScript compiler release */
-    ts.version = "1.5.0";
+    ts.version = "1.5.2";
     var carriageReturnLineFeed = "\r\n";
     var lineFeed = "\n";
     function findConfigFile(searchPath) {
