@@ -29767,7 +29767,12 @@ var ts;
             // Create the emit resolver outside of the "emitTime" tracking code below.  That way
             // any cost associated with it (like type checking) are appropriate associated with
             // the type-checking counter.
-            var emitResolver = getDiagnosticsProducingTypeChecker().getEmitResolver(sourceFile);
+            //
+            // If the -out option is specified, we should not pass the source file to getEmitResolver.
+            // This is because in the -out scenario all files need to be emitted, and therefore all
+            // files need to be type checked. And the way to specify that all files need to be type
+            // checked is to not pass the file to getEmitResolver.
+            var emitResolver = getDiagnosticsProducingTypeChecker().getEmitResolver(options.out ? undefined : sourceFile);
             var start = new Date().getTime();
             var emitResult = ts.emitFiles(emitResolver, getEmitHost(writeFileCallback), sourceFile);
             ts.emitTime += new Date().getTime() - start;
@@ -40292,10 +40297,12 @@ var ts;
                     var kind = triviaScanner.scan();
                     var end = triviaScanner.getTextPos();
                     var width = end - start;
+                    // The moment we get something that isn't trivia, then stop processing.
+                    if (!ts.isTrivia(kind)) {
+                        return;
+                    }
+                    // Only bother with the trivia if it at least intersects the span of interest.
                     if (ts.textSpanIntersectsWith(span, start, width)) {
-                        if (!ts.isTrivia(kind)) {
-                            return;
-                        }
                         if (ts.isComment(kind)) {
                             // Simple comment.  Just add as is.
                             pushClassification(start, width, 1 /* comment */);
