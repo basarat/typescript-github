@@ -431,9 +431,13 @@ var ts;
                 return 3;
             return 2;
         }
+        if (path.lastIndexOf("file:///", 0) === 0) {
+            return "file:///".length;
+        }
         var idx = path.indexOf('://');
-        if (idx !== -1)
-            return idx + 3;
+        if (idx !== -1) {
+            return idx + "://".length;
+        }
         return 0;
     }
     ts.getRootLength = getRootLength;
@@ -1079,8 +1083,8 @@ var ts;
         Decorators_are_only_available_when_targeting_ECMAScript_5_and_higher: { code: 1205, category: ts.DiagnosticCategory.Error, key: "Decorators are only available when targeting ECMAScript 5 and higher." },
         Decorators_are_not_valid_here: { code: 1206, category: ts.DiagnosticCategory.Error, key: "Decorators are not valid here." },
         Decorators_cannot_be_applied_to_multiple_get_Slashset_accessors_of_the_same_name: { code: 1207, category: ts.DiagnosticCategory.Error, key: "Decorators cannot be applied to multiple get/set accessors of the same name." },
-        Cannot_compile_namespaces_when_the_separateCompilation_flag_is_provided: { code: 1208, category: ts.DiagnosticCategory.Error, key: "Cannot compile namespaces when the '--separateCompilation' flag is provided." },
-        Ambient_const_enums_are_not_allowed_when_the_separateCompilation_flag_is_provided: { code: 1209, category: ts.DiagnosticCategory.Error, key: "Ambient const enums are not allowed when the '--separateCompilation' flag is provided." },
+        Cannot_compile_namespaces_when_the_isolatedModules_flag_is_provided: { code: 1208, category: ts.DiagnosticCategory.Error, key: "Cannot compile namespaces when the '--isolatedModules' flag is provided." },
+        Ambient_const_enums_are_not_allowed_when_the_isolatedModules_flag_is_provided: { code: 1209, category: ts.DiagnosticCategory.Error, key: "Ambient const enums are not allowed when the '--isolatedModules' flag is provided." },
         Invalid_use_of_0_Class_definitions_are_automatically_in_strict_mode: { code: 1210, category: ts.DiagnosticCategory.Error, key: "Invalid use of '{0}'. Class definitions are automatically in strict mode." },
         A_class_declaration_without_the_default_modifier_must_have_a_name: { code: 1211, category: ts.DiagnosticCategory.Error, key: "A class declaration without the 'default' modifier must have a name" },
         Identifier_expected_0_is_a_reserved_word_in_strict_mode: { code: 1212, category: ts.DiagnosticCategory.Error, key: "Identifier expected. '{0}' is a reserved word in strict mode" },
@@ -1363,11 +1367,11 @@ var ts;
         Option_noEmit_cannot_be_specified_with_option_out_or_outDir: { code: 5040, category: ts.DiagnosticCategory.Error, key: "Option 'noEmit' cannot be specified with option 'out' or 'outDir'." },
         Option_noEmit_cannot_be_specified_with_option_declaration: { code: 5041, category: ts.DiagnosticCategory.Error, key: "Option 'noEmit' cannot be specified with option 'declaration'." },
         Option_project_cannot_be_mixed_with_source_files_on_a_command_line: { code: 5042, category: ts.DiagnosticCategory.Error, key: "Option 'project' cannot be mixed with source files on a command line." },
-        Option_sourceMap_cannot_be_specified_with_option_separateCompilation: { code: 5043, category: ts.DiagnosticCategory.Error, key: "Option 'sourceMap' cannot be specified with option 'separateCompilation'." },
-        Option_declaration_cannot_be_specified_with_option_separateCompilation: { code: 5044, category: ts.DiagnosticCategory.Error, key: "Option 'declaration' cannot be specified with option 'separateCompilation'." },
-        Option_noEmitOnError_cannot_be_specified_with_option_separateCompilation: { code: 5045, category: ts.DiagnosticCategory.Error, key: "Option 'noEmitOnError' cannot be specified with option 'separateCompilation'." },
-        Option_out_cannot_be_specified_with_option_separateCompilation: { code: 5046, category: ts.DiagnosticCategory.Error, key: "Option 'out' cannot be specified with option 'separateCompilation'." },
-        Option_separateCompilation_can_only_be_used_when_either_option_module_is_provided_or_option_target_is_ES6_or_higher: { code: 5047, category: ts.DiagnosticCategory.Error, key: "Option 'separateCompilation' can only be used when either option'--module' is provided or option 'target' is 'ES6' or higher." },
+        Option_sourceMap_cannot_be_specified_with_option_isolatedModules: { code: 5043, category: ts.DiagnosticCategory.Error, key: "Option 'sourceMap' cannot be specified with option 'isolatedModules'." },
+        Option_declaration_cannot_be_specified_with_option_isolatedModules: { code: 5044, category: ts.DiagnosticCategory.Error, key: "Option 'declaration' cannot be specified with option 'isolatedModules'." },
+        Option_noEmitOnError_cannot_be_specified_with_option_isolatedModules: { code: 5045, category: ts.DiagnosticCategory.Error, key: "Option 'noEmitOnError' cannot be specified with option 'isolatedModules'." },
+        Option_out_cannot_be_specified_with_option_isolatedModules: { code: 5046, category: ts.DiagnosticCategory.Error, key: "Option 'out' cannot be specified with option 'isolatedModules'." },
+        Option_isolatedModules_can_only_be_used_when_either_option_module_is_provided_or_option_target_is_ES6_or_higher: { code: 5047, category: ts.DiagnosticCategory.Error, key: "Option 'isolatedModules' can only be used when either option'--module' is provided or option 'target' is 'ES6' or higher." },
         Option_sourceMap_cannot_be_specified_with_option_inlineSourceMap: { code: 5048, category: ts.DiagnosticCategory.Error, key: "Option 'sourceMap' cannot be specified with option 'inlineSourceMap'." },
         Option_sourceRoot_cannot_be_specified_with_option_inlineSourceMap: { code: 5049, category: ts.DiagnosticCategory.Error, key: "Option 'sourceRoot' cannot be specified with option 'inlineSourceMap'." },
         Option_mapRoot_cannot_be_specified_with_option_inlineSourceMap: { code: 5050, category: ts.DiagnosticCategory.Error, key: "Option 'mapRoot' cannot be specified with option 'inlineSourceMap'." },
@@ -2850,7 +2854,7 @@ var ts;
             paramType: ts.Diagnostics.LOCATION
         },
         {
-            name: "separateCompilation",
+            name: "isolatedModules",
             type: "boolean"
         },
         {
@@ -4281,7 +4285,7 @@ var ts;
     function shouldEmitToOwnFile(sourceFile, compilerOptions) {
         if (!isDeclarationFile(sourceFile)) {
             if ((isExternalModule(sourceFile) || !compilerOptions.out)) {
-                return compilerOptions.separateCompilation || !ts.fileExtensionIs(sourceFile.fileName, ".js");
+                return compilerOptions.isolatedModules || !ts.fileExtensionIs(sourceFile.fileName, ".js");
             }
             return false;
         }
@@ -9501,7 +9505,7 @@ var ts;
             var symbol = getSymbolOfNode(node);
             var target = resolveAlias(symbol);
             if (target) {
-                var markAlias = (target === unknownSymbol && compilerOptions.separateCompilation) ||
+                var markAlias = (target === unknownSymbol && compilerOptions.isolatedModules) ||
                     (target !== unknownSymbol && (target.flags & 107455) && !isConstEnumOrConstEnumOnlyModule(target));
                 if (markAlias) {
                     markAliasSymbolAsReferenced(symbol);
@@ -10811,7 +10815,10 @@ var ts;
         function getTypeOfAlias(symbol) {
             var links = getSymbolLinks(symbol);
             if (!links.type) {
-                links.type = getTypeOfSymbol(resolveAlias(symbol));
+                var targetSymbol = resolveAlias(symbol);
+                links.type = targetSymbol.flags & 107455
+                    ? getTypeOfSymbol(targetSymbol)
+                    : unknownType;
             }
             return links.type;
         }
@@ -15922,7 +15929,7 @@ var ts;
         function checkTypeNodeAsExpression(node) {
             if (node && node.kind === 142) {
                 var type = getTypeFromTypeNode(node);
-                var shouldCheckIfUnknownType = type === unknownType && compilerOptions.separateCompilation;
+                var shouldCheckIfUnknownType = type === unknownType && compilerOptions.isolatedModules;
                 if (!type || (!shouldCheckIfUnknownType && type.flags & (1048703 | 132 | 258))) {
                     return;
                 }
@@ -16755,7 +16762,7 @@ var ts;
                     checkKindsOfPropertyMemberOverrides(type, baseType);
                 }
             }
-            if (baseTypes.length || (baseTypeNode && compilerOptions.separateCompilation)) {
+            if (baseTypes.length || (baseTypeNode && compilerOptions.isolatedModules)) {
                 checkExpressionOrQualifiedName(baseTypeNode.expression);
             }
             var implementedTypeNodes = ts.getClassImplementsHeritageClauseElements(node);
@@ -17099,8 +17106,8 @@ var ts;
             checkExportsOnMergedDeclarations(node);
             computeEnumMemberValues(node);
             var enumIsConst = ts.isConst(node);
-            if (compilerOptions.separateCompilation && enumIsConst && ts.isInAmbientContext(node)) {
-                error(node.name, ts.Diagnostics.Ambient_const_enums_are_not_allowed_when_the_separateCompilation_flag_is_provided);
+            if (compilerOptions.isolatedModules && enumIsConst && ts.isInAmbientContext(node)) {
+                error(node.name, ts.Diagnostics.Ambient_const_enums_are_not_allowed_when_the_isolatedModules_flag_is_provided);
             }
             var enumSymbol = getSymbolOfNode(node);
             var firstDeclaration = ts.getDeclarationOfKind(enumSymbol, node.kind);
@@ -17172,7 +17179,7 @@ var ts;
                 if (symbol.flags & 512
                     && symbol.declarations.length > 1
                     && !ts.isInAmbientContext(node)
-                    && ts.isInstantiatedModule(node, compilerOptions.preserveConstEnums || compilerOptions.separateCompilation)) {
+                    && ts.isInstantiatedModule(node, compilerOptions.preserveConstEnums || compilerOptions.isolatedModules)) {
                     var firstNonAmbientClassOrFunc = getFirstNonAmbientClassOrFunctionDeclaration(symbol);
                     if (firstNonAmbientClassOrFunc) {
                         if (ts.getSourceFileOfNode(node) !== ts.getSourceFileOfNode(firstNonAmbientClassOrFunc)) {
@@ -18094,7 +18101,7 @@ var ts;
         }
         function isAliasResolvedToValue(symbol) {
             var target = resolveAlias(symbol);
-            if (target === unknownSymbol && compilerOptions.separateCompilation) {
+            if (target === unknownSymbol && compilerOptions.isolatedModules) {
                 return true;
             }
             return target !== unknownSymbol && target && target.flags & 107455 && !isConstEnumOrConstEnumOnlyModule(target);
@@ -21652,7 +21659,7 @@ var ts;
                 }
                 return true;
             }
-            function emitListWithSpread(elements, multiLine, trailingComma) {
+            function emitListWithSpread(elements, alwaysCopy, multiLine, trailingComma) {
                 var pos = 0;
                 var group = 0;
                 var length = elements.length;
@@ -21668,6 +21675,9 @@ var ts;
                         e = e.expression;
                         emitParenthesizedIf(e, group === 0 && needsParenthesisForPropertyAccessOrInvocation(e));
                         pos++;
+                        if (pos === length && group === 0 && alwaysCopy && e.kind !== 154) {
+                            write(".slice()");
+                        }
                     }
                     else {
                         var i = pos;
@@ -21705,7 +21715,7 @@ var ts;
                     write("]");
                 }
                 else {
-                    emitListWithSpread(elements, (node.flags & 512) !== 0, elements.hasTrailingComma);
+                    emitListWithSpread(elements, true, (node.flags & 512) !== 0, elements.hasTrailingComma);
                 }
             }
             function emitObjectLiteralBody(node, numElements) {
@@ -21921,7 +21931,7 @@ var ts;
                 }
             }
             function tryEmitConstantValue(node) {
-                if (compilerOptions.separateCompilation) {
+                if (compilerOptions.isolatedModules) {
                     return false;
                 }
                 var constantValue = resolver.getConstantValue(node);
@@ -22031,7 +22041,7 @@ var ts;
                     write("void 0");
                 }
                 write(", ");
-                emitListWithSpread(node.arguments, false, false);
+                emitListWithSpread(node.arguments, false, false, false);
                 write(")");
             }
             function emitCallExpression(node) {
@@ -22659,7 +22669,7 @@ var ts;
                 if (node.flags & 1) {
                     writeLine();
                     emitStart(node);
-                    if (compilerOptions.module === 4) {
+                    if (compilerOptions.module === 4 && node.parent === currentSourceFile) {
                         write(exportFunctionForFile + "(\"");
                         if (node.flags & 256) {
                             write("default");
@@ -24015,21 +24025,23 @@ var ts;
             }
             function shouldEmitEnumDeclaration(node) {
                 var isConstEnum = ts.isConst(node);
-                return !isConstEnum || compilerOptions.preserveConstEnums || compilerOptions.separateCompilation;
+                return !isConstEnum || compilerOptions.preserveConstEnums || compilerOptions.isolatedModules;
             }
             function emitEnumDeclaration(node) {
                 if (!shouldEmitEnumDeclaration(node)) {
                     return;
                 }
-                if (!(node.flags & 1) || isES6ExportedDeclaration(node)) {
-                    emitStart(node);
-                    if (isES6ExportedDeclaration(node)) {
-                        write("export ");
+                if (!shouldHoistDeclarationInSystemJsModule(node)) {
+                    if (!(node.flags & 1) || isES6ExportedDeclaration(node)) {
+                        emitStart(node);
+                        if (isES6ExportedDeclaration(node)) {
+                            write("export ");
+                        }
+                        write("var ");
+                        emit(node.name);
+                        emitEnd(node);
+                        write(";");
                     }
-                    write("var ");
-                    emit(node.name);
-                    emitEnd(node);
-                    write(";");
                 }
                 writeLine();
                 emitStart(node);
@@ -24051,7 +24063,7 @@ var ts;
                 emitModuleMemberName(node);
                 write(" = {}));");
                 emitEnd(node);
-                if (!isES6ExportedDeclaration(node) && node.flags & 1) {
+                if (!isES6ExportedDeclaration(node) && node.flags & 1 && !shouldHoistDeclarationInSystemJsModule(node)) {
                     writeLine();
                     emitStart(node);
                     write("var ");
@@ -24062,6 +24074,14 @@ var ts;
                     write(";");
                 }
                 if (languageVersion < 2 && node.parent === currentSourceFile) {
+                    if (compilerOptions.module === 4 && (node.flags & 1)) {
+                        writeLine();
+                        write(exportFunctionForFile + "(\"");
+                        emitDeclarationName(node);
+                        write("\", ");
+                        emitDeclarationName(node);
+                        write(")");
+                    }
                     emitExportMemberAssignments(node.name);
                 }
             }
@@ -24100,7 +24120,7 @@ var ts;
                 }
             }
             function shouldEmitModuleDeclaration(node) {
-                return ts.isInstantiatedModule(node, compilerOptions.preserveConstEnums || compilerOptions.separateCompilation);
+                return ts.isInstantiatedModule(node, compilerOptions.preserveConstEnums || compilerOptions.isolatedModules);
             }
             function isModuleMergedWithES6Class(node) {
                 return languageVersion === 2 && !!(resolver.getNodeCheckFlags(node) & 2048);
@@ -24648,12 +24668,25 @@ var ts;
                 if (hoistedVars) {
                     writeLine();
                     write("var ");
+                    var seen = {};
                     for (var i = 0; i < hoistedVars.length; ++i) {
                         var local = hoistedVars[i];
+                        var name_21 = local.kind === 65
+                            ? local
+                            : local.name;
+                        if (name_21) {
+                            var text = ts.unescapeIdentifier(name_21.text);
+                            if (ts.hasProperty(seen, text)) {
+                                continue;
+                            }
+                            else {
+                                seen[text] = text;
+                            }
+                        }
                         if (i !== 0) {
                             write(", ");
                         }
-                        if (local.kind === 202 || local.kind === 206) {
+                        if (local.kind === 202 || local.kind === 206 || local.kind === 205) {
                             emitDeclarationName(local);
                         }
                         else {
@@ -24684,6 +24717,9 @@ var ts;
                 }
                 return exportedDeclarations;
                 function visit(node) {
+                    if (node.flags & 2) {
+                        return;
+                    }
                     if (node.kind === 201) {
                         if (!hoistedFunctionDeclarations) {
                             hoistedFunctionDeclarations = [];
@@ -24698,24 +24734,35 @@ var ts;
                         hoistedVars.push(node);
                         return;
                     }
-                    if (node.kind === 206 && shouldEmitModuleDeclaration(node)) {
-                        if (!hoistedVars) {
-                            hoistedVars = [];
+                    if (node.kind === 205) {
+                        if (shouldEmitEnumDeclaration(node)) {
+                            if (!hoistedVars) {
+                                hoistedVars = [];
+                            }
+                            hoistedVars.push(node);
                         }
-                        hoistedVars.push(node);
+                        return;
+                    }
+                    if (node.kind === 206) {
+                        if (shouldEmitModuleDeclaration(node)) {
+                            if (!hoistedVars) {
+                                hoistedVars = [];
+                            }
+                            hoistedVars.push(node);
+                        }
                         return;
                     }
                     if (node.kind === 199 || node.kind === 153) {
                         if (shouldHoistVariable(node, false)) {
-                            var name_21 = node.name;
-                            if (name_21.kind === 65) {
+                            var name_22 = node.name;
+                            if (name_22.kind === 65) {
                                 if (!hoistedVars) {
                                     hoistedVars = [];
                                 }
-                                hoistedVars.push(name_21);
+                                hoistedVars.push(name_22);
                             }
                             else {
-                                ts.forEachChild(name_21, visit);
+                                ts.forEachChild(name_22, visit);
                             }
                         }
                         return;
@@ -25029,7 +25076,7 @@ var ts;
                         paramEmitted = true;
                     }
                 }
-                if (ts.isExternalModule(node) || compilerOptions.separateCompilation) {
+                if (ts.isExternalModule(node) || compilerOptions.isolatedModules) {
                     if (languageVersion >= 2) {
                         emitES6Module(node, startIndex);
                     }
@@ -25385,7 +25432,7 @@ var ts;
     ts.emitTime = 0;
     ts.ioReadTime = 0;
     ts.ioWriteTime = 0;
-    ts.version = "1.5.2";
+    ts.version = "1.5.3";
     var carriageReturnLineFeed = "\r\n";
     var lineFeed = "\n";
     function findConfigFile(searchPath) {
@@ -25568,7 +25615,7 @@ var ts;
             return emitResult;
         }
         function getSourceFile(fileName) {
-            fileName = host.getCanonicalFileName(fileName);
+            fileName = host.getCanonicalFileName(ts.normalizeSlashes(fileName));
             return ts.hasProperty(filesByName, fileName) ? filesByName[fileName] : undefined;
         }
         function getDiagnosticsHelper(sourceFile, getDiagnostics) {
@@ -25659,7 +25706,7 @@ var ts;
             }
         }
         function findSourceFile(fileName, isDefaultLib, refFile, refStart, refLength) {
-            var canonicalName = host.getCanonicalFileName(fileName);
+            var canonicalName = host.getCanonicalFileName(ts.normalizeSlashes(fileName));
             if (ts.hasProperty(filesByName, canonicalName)) {
                 return getSourceFileFromCache(fileName, canonicalName, false);
             }
@@ -25802,18 +25849,18 @@ var ts;
             return allFilesBelongToPath;
         }
         function verifyCompilerOptions() {
-            if (options.separateCompilation) {
+            if (options.isolatedModules) {
                 if (options.sourceMap) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_sourceMap_cannot_be_specified_with_option_separateCompilation));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_sourceMap_cannot_be_specified_with_option_isolatedModules));
                 }
                 if (options.declaration) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_declaration_cannot_be_specified_with_option_separateCompilation));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_declaration_cannot_be_specified_with_option_isolatedModules));
                 }
                 if (options.noEmitOnError) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_noEmitOnError_cannot_be_specified_with_option_separateCompilation));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_noEmitOnError_cannot_be_specified_with_option_isolatedModules));
                 }
                 if (options.out) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_out_cannot_be_specified_with_option_separateCompilation));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_out_cannot_be_specified_with_option_isolatedModules));
                 }
             }
             if (options.inlineSourceMap) {
@@ -25843,14 +25890,14 @@ var ts;
             }
             var languageVersion = options.target || 0;
             var firstExternalModuleSourceFile = ts.forEach(files, function (f) { return ts.isExternalModule(f) ? f : undefined; });
-            if (options.separateCompilation) {
+            if (options.isolatedModules) {
                 if (!options.module && languageVersion < 2) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_separateCompilation_can_only_be_used_when_either_option_module_is_provided_or_option_target_is_ES6_or_higher));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_isolatedModules_can_only_be_used_when_either_option_module_is_provided_or_option_target_is_ES6_or_higher));
                 }
                 var firstNonExternalModuleSourceFile = ts.forEach(files, function (f) { return !ts.isExternalModule(f) && !ts.isDeclarationFile(f) ? f : undefined; });
                 if (firstNonExternalModuleSourceFile) {
                     var span = ts.getErrorSpanForNode(firstNonExternalModuleSourceFile, firstNonExternalModuleSourceFile);
-                    diagnostics.add(ts.createFileDiagnostic(firstNonExternalModuleSourceFile, span.start, span.length, ts.Diagnostics.Cannot_compile_namespaces_when_the_separateCompilation_flag_is_provided));
+                    diagnostics.add(ts.createFileDiagnostic(firstNonExternalModuleSourceFile, span.start, span.length, ts.Diagnostics.Cannot_compile_namespaces_when_the_isolatedModules_flag_is_provided));
                 }
             }
             else if (firstExternalModuleSourceFile && languageVersion < 2 && !options.module) {
@@ -26411,10 +26458,10 @@ var ts;
             ts.forEach(program.getSourceFiles(), function (sourceFile) {
                 cancellationToken.throwIfCancellationRequested();
                 var nameToDeclarations = sourceFile.getNamedDeclarations();
-                for (var name_22 in nameToDeclarations) {
-                    var declarations = ts.getProperty(nameToDeclarations, name_22);
+                for (var name_23 in nameToDeclarations) {
+                    var declarations = ts.getProperty(nameToDeclarations, name_23);
                     if (declarations) {
-                        var matches = patternMatcher.getMatchesForLastSegmentOfPattern(name_22);
+                        var matches = patternMatcher.getMatchesForLastSegmentOfPattern(name_23);
                         if (!matches) {
                             continue;
                         }
@@ -26425,14 +26472,14 @@ var ts;
                                 if (!containers) {
                                     return undefined;
                                 }
-                                matches = patternMatcher.getMatches(containers, name_22);
+                                matches = patternMatcher.getMatches(containers, name_23);
                                 if (!matches) {
                                     continue;
                                 }
                             }
                             var fileName = sourceFile.fileName;
                             var matchKind = bestMatchKind(matches);
-                            rawItems.push({ name: name_22, fileName: fileName, matchKind: matchKind, isCaseSensitive: allMatchesAreCaseSensitive(matches), declaration: declaration });
+                            rawItems.push({ name: name_23, fileName: fileName, matchKind: matchKind, isCaseSensitive: allMatchesAreCaseSensitive(matches), declaration: declaration });
                         }
                     }
                 }
@@ -26762,9 +26809,9 @@ var ts;
                     case 199:
                     case 153:
                         var variableDeclarationNode;
-                        var name_23;
+                        var name_24;
                         if (node.kind === 153) {
-                            name_23 = node.name;
+                            name_24 = node.name;
                             variableDeclarationNode = node;
                             while (variableDeclarationNode && variableDeclarationNode.kind !== 199) {
                                 variableDeclarationNode = variableDeclarationNode.parent;
@@ -26774,16 +26821,16 @@ var ts;
                         else {
                             ts.Debug.assert(!ts.isBindingPattern(node.name));
                             variableDeclarationNode = node;
-                            name_23 = node.name;
+                            name_24 = node.name;
                         }
                         if (ts.isConst(variableDeclarationNode)) {
-                            return createItem(node, getTextOfNode(name_23), ts.ScriptElementKind.constElement);
+                            return createItem(node, getTextOfNode(name_24), ts.ScriptElementKind.constElement);
                         }
                         else if (ts.isLet(variableDeclarationNode)) {
-                            return createItem(node, getTextOfNode(name_23), ts.ScriptElementKind.letElement);
+                            return createItem(node, getTextOfNode(name_24), ts.ScriptElementKind.letElement);
                         }
                         else {
-                            return createItem(node, getTextOfNode(name_23), ts.ScriptElementKind.variableElement);
+                            return createItem(node, getTextOfNode(name_24), ts.ScriptElementKind.variableElement);
                         }
                     case 136:
                         return createItem(node, "constructor", ts.ScriptElementKind.constructorImplementationElement);
@@ -28775,9 +28822,9 @@ var ts;
             }
             Rules.prototype.getRuleName = function (rule) {
                 var o = this;
-                for (var name_24 in o) {
-                    if (o[name_24] === rule) {
-                        return name_24;
+                for (var name_25 in o) {
+                    if (o[name_25] === rule) {
+                        return name_25;
                     }
                 }
                 throw new Error("Unknown rule");
@@ -31307,7 +31354,7 @@ var ts;
     }
     function transpile(input, compilerOptions, fileName, diagnostics) {
         var options = compilerOptions ? ts.clone(compilerOptions) : getDefaultCompilerOptions();
-        options.separateCompilation = true;
+        options.isolatedModules = true;
         options.allowNonTsExtensions = true;
         var inputFileName = fileName || "module.ts";
         var sourceFile = ts.createSourceFile(inputFileName, input, options.target);
@@ -31348,7 +31395,25 @@ var ts;
         if (textChangeRange) {
             if (version !== sourceFile.version) {
                 if (!ts.disableIncrementalParsing) {
-                    var newSourceFile = ts.updateSourceFile(sourceFile, scriptSnapshot.getText(0, scriptSnapshot.getLength()), textChangeRange, aggressiveChecks);
+                    var newText;
+                    var prefix = textChangeRange.span.start !== 0
+                        ? sourceFile.text.substr(0, textChangeRange.span.start)
+                        : "";
+                    var suffix = ts.textSpanEnd(textChangeRange.span) !== sourceFile.text.length
+                        ? sourceFile.text.substr(ts.textSpanEnd(textChangeRange.span))
+                        : "";
+                    if (textChangeRange.newLength === 0) {
+                        newText = prefix && suffix ? prefix + suffix : prefix || suffix;
+                    }
+                    else {
+                        var changedText = scriptSnapshot.getText(textChangeRange.span.start, textChangeRange.span.start + textChangeRange.newLength);
+                        newText = prefix && suffix
+                            ? prefix + changedText + suffix
+                            : prefix
+                                ? (prefix + changedText)
+                                : (changedText + suffix);
+                    }
+                    var newSourceFile = ts.updateSourceFile(sourceFile, newText, textChangeRange, aggressiveChecks);
                     setSourceFileFields(newSourceFile, scriptSnapshot, version);
                     newSourceFile.nameTable = undefined;
                     return newSourceFile;
@@ -31760,6 +31825,7 @@ var ts;
         var syntaxTreeCache = new SyntaxTreeCache(host);
         var ruleProvider;
         var program;
+        var lastProjectVersion;
         var useCaseSensitivefileNames = false;
         var cancellationToken = new CancellationTokenObject(host.getCancellationToken && host.getCancellationToken());
         if (!ts.localizedDiagnosticMessages && host.getLocalizedDiagnosticMessages) {
@@ -31789,6 +31855,15 @@ var ts;
             return ruleProvider;
         }
         function synchronizeHostData() {
+            if (host.getProjectVersion) {
+                var hostProjectVersion = host.getProjectVersion();
+                if (hostProjectVersion) {
+                    if (lastProjectVersion === hostProjectVersion) {
+                        return;
+                    }
+                    lastProjectVersion = hostProjectVersion;
+                }
+            }
             var hostCache = new HostCache(host, getCanonicalFileName);
             if (programUpToDate()) {
                 return;
@@ -32460,10 +32535,10 @@ var ts;
                 for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
                     var sourceFile = _a[_i];
                     var nameTable = getNameTable(sourceFile);
-                    for (var name_25 in nameTable) {
-                        if (!allNames[name_25]) {
-                            allNames[name_25] = name_25;
-                            var displayName = getCompletionEntryDisplayName(name_25, target, true);
+                    for (var name_26 in nameTable) {
+                        if (!allNames[name_26]) {
+                            allNames[name_26] = name_26;
+                            var displayName = getCompletionEntryDisplayName(name_26, target, true);
                             if (displayName) {
                                 var entry = {
                                     name: displayName,
@@ -34142,17 +34217,17 @@ var ts;
                 if (isNameOfPropertyAssignment(node)) {
                     var objectLiteral = node.parent.parent;
                     var contextualType = typeChecker.getContextualType(objectLiteral);
-                    var name_26 = node.text;
+                    var name_27 = node.text;
                     if (contextualType) {
                         if (contextualType.flags & 16384) {
-                            var unionProperty = contextualType.getProperty(name_26);
+                            var unionProperty = contextualType.getProperty(name_27);
                             if (unionProperty) {
                                 return [unionProperty];
                             }
                             else {
                                 var result_4 = [];
                                 ts.forEach(contextualType.types, function (t) {
-                                    var symbol = t.getProperty(name_26);
+                                    var symbol = t.getProperty(name_27);
                                     if (symbol) {
                                         result_4.push(symbol);
                                     }
@@ -34161,7 +34236,7 @@ var ts;
                             }
                         }
                         else {
-                            var symbol_1 = contextualType.getProperty(name_26);
+                            var symbol_1 = contextualType.getProperty(name_27);
                             if (symbol_1) {
                                 return [symbol_1];
                             }
