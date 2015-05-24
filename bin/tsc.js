@@ -17122,6 +17122,7 @@ var ts;
                     break;
                 case 135:
                 case 134:
+                    ts.forEach(node.decorators, checkFunctionExpressionBodies);
                     ts.forEach(node.parameters, checkFunctionExpressionBodies);
                     if (ts.isObjectLiteralMethod(node)) {
                         checkFunctionExpressionOrObjectLiteralMethodBody(node);
@@ -17136,6 +17137,7 @@ var ts;
                 case 193:
                     checkFunctionExpressionBodies(node.expression);
                     break;
+                case 131:
                 case 130:
                 case 133:
                 case 132:
