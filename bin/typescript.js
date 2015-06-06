@@ -17611,6 +17611,14 @@ var ts;
                 checkIfNonVoidFunctionHasReturnExpressionsOrSingleThrowStatment(node, getTypeFromTypeNode(node.type));
             }
             if (node.body) {
+                if (!node.type) {
+                    // There are some checks that are only performed in getReturnTypeFromBody, that may produce errors
+                    // we need. An example is the noImplicitAny errors resulting from widening the return expression
+                    // of a function. Because checking of function expression bodies is deferred, there was never an
+                    // appropriate time to do this during the main walk of the file (see the comment at the top of
+                    // checkFunctionExpressionBodies). So it must be done now.
+                    getReturnTypeOfSignature(getSignatureFromDeclaration(node));
+                }
                 if (node.body.kind === 180 /* Block */) {
                     checkSourceElement(node.body);
                 }
@@ -25620,6 +25628,11 @@ var ts;
                 return result;
             }
             function parenthesizeForAccess(expr) {
+                // When diagnosing whether the expression needs parentheses, the decision should be based
+                // on the innermost expression in a chain of nested type assertions.
+                while (expr.kind === 161 /* TypeAssertionExpression */) {
+                    expr = expr.expression;
+                }
                 // isLeftHandSideExpression is almost the correct criterion for when it is not necessary
                 // to parenthesize the expression before a dot. The known exceptions are:
                 //
@@ -25628,7 +25641,9 @@ var ts;
                 //    NumberLiteral
                 //       1.x            -> not the same as (1).x
                 //
-                if (ts.isLeftHandSideExpression(expr) && expr.kind !== 159 /* NewExpression */ && expr.kind !== 7 /* NumericLiteral */) {
+                if (ts.isLeftHandSideExpression(expr) &&
+                    expr.kind !== 159 /* NewExpression */ &&
+                    expr.kind !== 7 /* NumericLiteral */) {
                     return expr;
                 }
                 var node = ts.createSynthesizedNode(162 /* ParenthesizedExpression */);
@@ -25859,7 +25874,10 @@ var ts;
                 }
             }
             function emitParenExpression(node) {
-                if (!node.parent || node.parent.kind !== 164 /* ArrowFunction */) {
+                // If the node is synthesized, it means the emitter put the parentheses there,
+                // not the user. If we didn't want them, the emitter would not have put them
+                // there.
+                if (!ts.nodeIsSynthesized(node) && node.parent.kind !== 164 /* ArrowFunction */) {
                     if (node.expression.kind === 161 /* TypeAssertionExpression */) {
                         var operand = node.expression.expression;
                         // Make sure we consider all nested cast expressions, e.g.:
@@ -28141,7 +28159,7 @@ var ts;
                         emitDeclarationName(node);
                         write("\", ");
                         emitDeclarationName(node);
-                        write(")");
+                        write(");");
                     }
                     emitExportMemberAssignments(node.name);
                 }
@@ -28251,7 +28269,7 @@ var ts;
                         emitDeclarationName(node);
                         write("\", ");
                         emitDeclarationName(node);
-                        write(")");
+                        write(");");
                     }
                     emitExportMemberAssignments(node.name);
                 }
@@ -37354,12 +37372,16 @@ var ts;
                     }
                 }
             }
+            // hostCache is captured in the closure for 'getOrCreateSourceFile' but it should not be used past this point.
+            // It needs to be cleared to allow all collected snapshots to be released
+            hostCache = undefined;
             program = newProgram;
             // Make sure all the nodes in the program are both bound, and have their parent 
             // pointers set property.
             program.getTypeChecker();
             return;
             function getOrCreateSourceFile(fileName) {
+                ts.Debug.assert(hostCache !== undefined);
                 // The program is asking for this file, check first if the host can locate it.
                 // If the host can not locate the file, then it does not exist. return undefined
                 // to the program to allow reporting of errors for missing files.

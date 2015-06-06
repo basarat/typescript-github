@@ -14469,6 +14469,9 @@ var ts;
                 checkIfNonVoidFunctionHasReturnExpressionsOrSingleThrowStatment(node, getTypeFromTypeNode(node.type));
             }
             if (node.body) {
+                if (!node.type) {
+                    getReturnTypeOfSignature(getSignatureFromDeclaration(node));
+                }
                 if (node.body.kind === 180) {
                     checkSourceElement(node.body);
                 }
@@ -21530,7 +21533,12 @@ var ts;
                 return result;
             }
             function parenthesizeForAccess(expr) {
-                if (ts.isLeftHandSideExpression(expr) && expr.kind !== 159 && expr.kind !== 7) {
+                while (expr.kind === 161) {
+                    expr = expr.expression;
+                }
+                if (ts.isLeftHandSideExpression(expr) &&
+                    expr.kind !== 159 &&
+                    expr.kind !== 7) {
                     return expr;
                 }
                 var node = ts.createSynthesizedNode(162);
@@ -21737,7 +21745,7 @@ var ts;
                 }
             }
             function emitParenExpression(node) {
-                if (!node.parent || node.parent.kind !== 164) {
+                if (!ts.nodeIsSynthesized(node) && node.parent.kind !== 164) {
                     if (node.expression.kind === 161) {
                         var operand = node.expression.expression;
                         while (operand.kind == 161) {
@@ -23724,7 +23732,7 @@ var ts;
                         emitDeclarationName(node);
                         write("\", ");
                         emitDeclarationName(node);
-                        write(")");
+                        write(");");
                     }
                     emitExportMemberAssignments(node.name);
                 }
@@ -23832,7 +23840,7 @@ var ts;
                         emitDeclarationName(node);
                         write("\", ");
                         emitDeclarationName(node);
-                        write(")");
+                        write(");");
                     }
                     emitExportMemberAssignments(node.name);
                 }
