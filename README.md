@@ -5,6 +5,8 @@ This is meant to be used as pre-release builds if you want to try the compiler /
 
 ### Install
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/basarat/typescript-github.svg)](https://greenkeeper.io/)
+
 ``` sh
 npm install https://github.com/Arnavion/typescript-github/tarball/<release name>
 ```
